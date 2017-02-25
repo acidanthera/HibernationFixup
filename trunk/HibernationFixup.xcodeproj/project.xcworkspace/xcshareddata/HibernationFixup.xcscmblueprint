@@ -1,0 +1,25 @@
+{
+  "DVTSourceControlWorkspaceBlueprintPrimaryRemoteRepositoryKey" : "83e91cb9-a62b-4301-b08b-4f2bb4998a18",
+  "DVTSourceControlWorkspaceBlueprintWorkingCopyRepositoryLocationsKey" : {
+    "83e91cb9-a62b-4301-b08b-4f2bb4998a18" : {
+
+    }
+  },
+  "DVTSourceControlWorkspaceBlueprintWorkingCopyStatesKey" : {
+    "83e91cb9-a62b-4301-b08b-4f2bb4998a18" : 9223372036854775807
+  },
+  "DVTSourceControlWorkspaceBlueprintIdentifierKey" : "63BBA5CF-0281-40B6-AC92-1FA06993B2E9",
+  "DVTSourceControlWorkspaceBlueprintWorkingCopyPathsKey" : {
+    "83e91cb9-a62b-4301-b08b-4f2bb4998a18" : "hibernationfixup-svn\/"
+  },
+  "DVTSourceControlWorkspaceBlueprintNameKey" : "HibernationFixup",
+  "DVTSourceControlWorkspaceBlueprintVersion" : 204,
+  "DVTSourceControlWorkspaceBlueprintRelativePathToProjectKey" : "trunk\/HibernationFixup.xcodeproj",
+  "DVTSourceControlWorkspaceBlueprintRemoteRepositoriesKey" : [
+    {
+      "DVTSourceControlWorkspaceBlueprintRemoteRepositoryURLKey" : "svn+ssh:\/\/svn.code.sf.net\/p\/intelgraphicsfixup\/svn",
+      "DVTSourceControlWorkspaceBlueprintRemoteRepositorySystemKey" : "com.apple.dt.Xcode.sourcecontrol.Subversion",
+      "DVTSourceControlWorkspaceBlueprintRemoteRepositoryIdentifierKey" : "83e91cb9-a62b-4301-b08b-4f2bb4998a18"
+    }
+  ]
+}
