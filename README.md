@@ -13,6 +13,12 @@ Fortunately, boot.efi can read key "IOHibernateRTCVariables" from NVRAM!
 This kext detects entering into "hibernate" power state, reads variable 
 IOHibernateRTCVariables from the system registry and writes it to NVRAM.
 
-# Features
-    Enables 'native' hibernation on PC's with hardware NVRAM on 10.10.5 and later.
-    'Native' means hibernation with encryption (standard hibernate modes 3 & 25)
+#### Features
+- Enables 'native' hibernation on PC's with hardware NVRAM on 10.10.5 and later.
+  'Native' means hibernation with encryption (standard hibernate modes 3 & 25)
+
+
+#### Credits
+- [Apple](https://www.apple.com) for macOS  
+- [vit9696](https://github.com/vit9696) for [Lilu.kext](https://github.com/vit9696/Lilu)
+- [lvs1974](https://applelife.ru/members/lvs1974.53809/) for writing the software and maintaining it
