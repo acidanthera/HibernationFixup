@@ -16,6 +16,7 @@
 #include <IOKit/IOService.h>
 #include <IOKit/pwr_mgt/RootDomain.h>
 #include <IOKit/IODeviceTreeSupport.h>
+#include <IOKit/IONVRAM.h>
 
 
 // Only used in apple-driven callbacks
@@ -79,6 +80,10 @@ IOReturn HBFX::IOHibernateSystemSleep(void) {
                             }
                         }
                     }
+                    
+                    IODTNVRAM *ioOptionsEntry = OSDynamicCast(IODTNVRAM, nvram);
+                    if (ioOptionsEntry)
+                        ioOptionsEntry->sync();
                     OSSafeReleaseNULL(nvram);
                 }
                 else
