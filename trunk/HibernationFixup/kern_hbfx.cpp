@@ -60,31 +60,33 @@ IOReturn HBFX::IOHibernateSystemSleep(void) {
             OSData *data = OSDynamicCast(OSData, IOService::getPMRootDomain()->getProperty(gIOHibernateRTCVariablesKey));
             if (data)
             {
-                if (IORegistryEntry *nvram = OSDynamicCast(IORegistryEntry, IORegistryEntry::fromPath("/options", gIODTPlane)))
+                if (IORegistryEntry *options = OSDynamicCast(IORegistryEntry, IORegistryEntry::fromPath("/options", gIODTPlane)))
                 {
-                    if (!nvram->getProperty(gIOHibernateRTCVariablesKey))
+                    if (IODTNVRAM *nvram = OSDynamicCast(IODTNVRAM, options))
                     {
-                        if (!nvram->setProperty(gIOHibernateRTCVariablesKey, data))
-                            DBGLOG("HBFX @ IOHibernateRTCVariablesKey can't be written to NVRAM.");
-                        else
+                        if (!nvram->getProperty(gIOHibernateRTCVariablesKey))
                         {
-                            DBGLOG("HBFX @ IOHibernateRTCVariablesKey has been written to NVRAM.");
-                
-                            // we should set fakesmc-key-HBKP-ch8* to zeroes if it exists 
-                            if (nvram->getProperty(gFakeSMCHBKP))
+                            if (!nvram->setProperty(gIOHibernateRTCVariablesKey, data))
+                                SYSLOG("HBFX @ IOHibernateRTCVariablesKey can't be written to NVRAM.");
+                            else
                             {
-                                uint8_t wiredCryptKey[32] = {0};
-                                OSData *hbkp = OSData::withBytes(&wiredCryptKey, sizeof(wiredCryptKey));
-                                nvram->setProperty(gFakeSMCHBKP, hbkp);
-                                hbkp->release();
+                                SYSLOG("HBFX @ IOHibernateRTCVariablesKey has been written to NVRAM.");
+                    
+                                // we should remove fakesmc-key-HBKP-ch8* if it exists
+                                if (nvram->getProperty(gFakeSMCHBKP))
+                                {
+                                    nvram->removeProperty(gFakeSMCHBKP);
+                                    SYSLOG("HBFX @ fakesmc-key-HBKP-ch8* has been removed from NVRAM.");
+                                }
                             }
                         }
+                        
+                        nvram->sync();
                     }
+                    else
+                        SYSLOG("HBFX @ Registry entry /options can't be casted to IONVRAM.");
                     
-                    IODTNVRAM *ioOptionsEntry = OSDynamicCast(IODTNVRAM, nvram);
-                    if (ioOptionsEntry)
-                        ioOptionsEntry->sync();
-                    OSSafeReleaseNULL(nvram);
+                    OSSafeReleaseNULL(options);
                 }
                 else
                     SYSLOG("HBFX @ Registry entry /options is not found.");
