@@ -13,6 +13,15 @@
 #define kIOHibernateRTCVariablesKey	"IOHibernateRTCVariables"
 #define kFakeSMCHBKB                "fakesmc-key-HBKP-ch8*"
 
+#define kIOHibernateFileKey		"Hibernate File"
+#define FILE_NVRAM_NAME			"nvram.plist"
+#define NVRAM_FILE_HEADER		"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" \
+                                "<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n"\
+                                "<plist version=\"1.0\">\n"
+#define NVRAM_FILE_FOOTER		"\n</plist>\n"
+
+class IODTNVRAM;
+
 class HBFX {
 public:
 	bool init();
@@ -27,7 +36,7 @@ private:
     void processKernel(KernelPatcher &patcher);
 	
 	/**
-	 *  PAVP session callback type
+	 *  IOHibernateSystemSleep callback type
 	 */
 	using t_io_hibernate_system_sleep_callback = IOReturn (*)(void);
     
@@ -40,19 +49,12 @@ private:
 	 *  Trampolines for original method invocations
 	 */
     t_io_hibernate_system_sleep_callback orgIOHibernateSystemSleep {nullptr};
-
+    
     /**
-     *  external global variables
+     *  Write NVRAM to file
      */
-    uint8_t *gIOFBVerboseBootPtr {nullptr};
-};
 
-struct AppleRTCHibernateVars
-{
-    uint8_t     signature[4];
-    uint32_t    revision;
-    uint8_t	    booterSignature[20];
-    uint8_t	    wiredCryptKey[16];
+    void writeNvramToFile(IODTNVRAM *nvram);
 };
 
 #endif /* kern_hbfx_hpp */

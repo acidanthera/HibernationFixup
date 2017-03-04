@@ -8,33 +8,49 @@
 #include <Headers/plugin_start.hpp>
 #include <Headers/kern_api.hpp>
 
+#include "kern_config.hpp"
 #include "kern_hbfx.hpp"
 
 static HBFX hbfx;
 
-static const char *bootargOff[] {
+const char *Configuration::bootargOff[] {
 	"-hbfxoff"
 };
 
-static const char *bootargDebug[] {
+const char *Configuration::bootargDebug[] {
 	"-hbfxdbg"
 };
 
-static const char *bootargBeta[] {
+const char *Configuration::bootargBeta[] {
 	"-hbfxbeta"
 };
 
+
+Configuration config;
+
+
+void Configuration::readArguments() {
+    char tmp[16];
+    if (PE_parse_boot_argn(bootargDumpNvram, tmp, sizeof(tmp)))
+        dumpNvram = true;
+    
+    PE_parse_boot_argn(bootargHfile, hfilepath, sizeof(hfilepath));
+}
+
+
+
 PluginConfiguration ADDPR(config) {
 	xStringify(PRODUCT_NAME),
-	bootargOff,
-	sizeof(bootargOff)/sizeof(bootargOff[0]),
-	bootargDebug,
-	sizeof(bootargDebug)/sizeof(bootargDebug[0]),
-	bootargBeta,
-	sizeof(bootargBeta)/sizeof(bootargBeta[0]),
+	config.bootargOff,
+	sizeof(config.bootargOff)/sizeof(config.bootargOff[0]),
+	config.bootargDebug,
+	sizeof(config.bootargDebug)/sizeof(config.bootargDebug[0]),
+	config.bootargBeta,
+	sizeof(config.bootargBeta)/sizeof(config.bootargBeta[0]),
 	KernelVersion::MountainLion,
 	KernelVersion::Sierra,
 	[]() {
+        config.readArguments();
 		hbfx.init();
 	}
 };
