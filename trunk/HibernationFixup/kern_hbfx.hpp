@@ -11,6 +11,7 @@
 #include <Headers/kern_patcher.hpp>
 
 #define kIOHibernateRTCVariablesKey	"IOHibernateRTCVariables"
+#define kIOHibernateSMCVariablesKey	"IOHibernateSMCVariables"
 #define kFakeSMCHBKB                "fakesmc-key-HBKP-ch8*"
 
 #define kIOHibernateFileKey		"Hibernate File"
