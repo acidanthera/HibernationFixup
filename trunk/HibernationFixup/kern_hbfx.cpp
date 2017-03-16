@@ -7,6 +7,7 @@
 
 #include <Headers/kern_api.hpp>
 #include <Headers/kern_file.hpp>
+#include <Headers/kern_util.hpp>
 
 #include "kern_config.hpp"
 #include "kern_hbfx.hpp"
@@ -164,26 +165,13 @@ void HBFX::processKernel(KernelPatcher &patcher)
 
 //==============================================================================
 
-static char * strrchr(char *p, int ch)
-{
-    for (char * save = NULL;; ++p)
-    {
-        if (*p == ch)
-            save = p;
-        if (!*p)
-            return(save);
-    }
-    /* NOTREACHED */
-}
-
-//==============================================================================
-
 static char * get_path(char* filepath)
 {
-    char * slash = strrchr(filepath, '/');
-    if (slash != filepath)
+    const char * slash = strrchr(filepath, '/');
+    if (slash != nullptr)
     {
-        *(slash + 1) = '\0';   // chop off the string at the last directory component
+        long offset = slash - filepath;
+        filepath[offset + 1] = '\0';   // chop off the string at the last directory component
         return filepath;
     }
     return nullptr;
