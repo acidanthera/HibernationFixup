@@ -72,6 +72,7 @@ IOReturn HBFX::IOHibernateSystemSleep(void) {
     if (callbackHBFX && callbackPatcher && callbackHBFX->orgIOHibernateSystemSleep)
     {
         result = callbackHBFX->orgIOHibernateSystemSleep();
+        
         if (result == KERN_SUCCESS)
         {
             DBGLOG("HBFX @ IOHibernateSystemSleep is called, result is: %x", result);
@@ -97,7 +98,6 @@ IOReturn HBFX::IOHibernateSystemSleep(void) {
                             }
                         }
                     }
-                    
                     
                     OSData *smc = OSDynamicCast(OSData, IOService::getPMRootDomain()->getProperty(gIOHibernateSMCVariables));
                     if (smc && !nvram->getProperty(gIOHibernateSMCVariables))
@@ -133,6 +133,10 @@ IOReturn HBFX::IOHibernateSystemSleep(void) {
             }
             else
                 SYSLOG("HBFX @ Registry entry /options is not found.");
+        }
+        else
+        {
+            DBGLOG("HBFX @ IOHibernateSystemSleep return is: %x", result);
         }
     }
     else {
