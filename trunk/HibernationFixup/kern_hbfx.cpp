@@ -32,6 +32,14 @@ static const OSSymbol *gBootNextKey = nullptr;
 static const OSSymbol *gFakeSMCHBKP = nullptr;
 
 
+// gIOHibernateState, kIOHibernateStateKey
+enum
+{
+    kIOHibernateStateInactive            = 0,
+    kIOHibernateStateHibernating         = 1,	/* writing image */
+    kIOHibernateStateWakingFromHibernate = 2	/* booted and restored image */
+};
+
 //==============================================================================
 
 bool HBFX::init() {
@@ -72,11 +80,18 @@ IOReturn HBFX::IOHibernateSystemSleep(void) {
     if (callbackHBFX && callbackPatcher && callbackHBFX->orgIOHibernateSystemSleep)
     {
         result = callbackHBFX->orgIOHibernateSystemSleep();
+        DBGLOG("HBFX @ IOHibernateSystemSleep is called, result is: %x", result);
         
-        if (result == KERN_SUCCESS)
+        uint32_t ioHibernateState = kIOHibernateStateInactive;
+        OSData *data = OSDynamicCast(OSData, IOService::getPMRootDomain()->getProperty(kIOHibernateStateKey));
+        if (data != 0)
         {
-            DBGLOG("HBFX @ IOHibernateSystemSleep is called, result is: %x", result);
-
+            ioHibernateState = *((uint32_t *)data->getBytesNoCopy());
+            DBGLOG("HBFX @ Hibernation detected from IOPMRootDomain: state = %d", ioHibernateState);
+        }
+        
+        if (result == KERN_SUCCESS || ioHibernateState == kIOHibernateStateHibernating)
+        {
             if (IORegistryEntry *options = OSDynamicCast(IORegistryEntry, IORegistryEntry::fromPath("/options", gIODTPlane)))
             {
                 if (IODTNVRAM *nvram = OSDynamicCast(IODTNVRAM, options))
@@ -121,6 +136,9 @@ IOReturn HBFX::IOHibernateSystemSleep(void) {
                         }
                         
                         callbackHBFX->writeNvramToFile(nvram);
+               
+                        if (callbackHBFX->hibernate_setup && callbackHBFX->gIOHibernateCurrentHeader)
+                            callbackHBFX->hibernate_setup(callbackHBFX->gIOHibernateCurrentHeader, true, 0, 0, 0);
                         
                         nvram->removeProperty(gBoot0082Key);
                         nvram->removeProperty(gBootNextKey);
@@ -134,10 +152,6 @@ IOReturn HBFX::IOHibernateSystemSleep(void) {
             else
                 SYSLOG("HBFX @ Registry entry /options is not found.");
         }
-        else
-        {
-            DBGLOG("HBFX @ IOHibernateSystemSleep return is: %x", result);
-        }
     }
     else {
         SYSLOG("HBFX @ callback arrived at nowhere");
@@ -150,7 +164,7 @@ IOReturn HBFX::IOHibernateSystemSleep(void) {
 
 void HBFX::processKernel(KernelPatcher &patcher)
 {
-    auto sessionCallback = patcher.solveSymbol(0, "_IOHibernateSystemSleep");
+    auto sessionCallback = patcher.solveSymbol(KernelPatcher::KernelID, "_IOHibernateSystemSleep");
     if (sessionCallback) {
         DBGLOG("HBFX @ obtained _IOHibernateSystemSleep");
         orgIOHibernateSystemSleep = reinterpret_cast<t_io_hibernate_system_sleep_callback>(patcher.routeFunction(sessionCallback, reinterpret_cast<mach_vm_address_t>(IOHibernateSystemSleep), true));
@@ -163,63 +177,54 @@ void HBFX::processKernel(KernelPatcher &patcher)
         SYSLOG("HBFX @ failed to resolve _IOHibernateSystemSleep");
     }
     
+    sessionCallback = patcher.solveSymbol(KernelPatcher::KernelID, "_hibernate_setup");
+    if (sessionCallback) {
+        DBGLOG("HBFX @ obtained _hibernate_setup");
+        hibernate_setup = reinterpret_cast<t_hibernate_setup>(sessionCallback);
+    } else {
+        SYSLOG("HBFX @ failed to resolve _hibernate_setup");
+    }
+    
+    gIOHibernateCurrentHeader = reinterpret_cast<void *>(patcher.solveSymbol(KernelPatcher::KernelID, "_gIOHibernateCurrentHeader"));
+    if (gIOHibernateCurrentHeader) {
+        DBGLOG("HBFX @ obtained _gIOHibernateCurrentHeader");
+    } else {
+        SYSLOG("HBFX @ failed to resolve _gIOHibernateCurrentHeader");
+    }
+    
+    cpu_data_ptr = reinterpret_cast<void *>(patcher.solveSymbol(KernelPatcher::KernelID, "_cpu_data_ptr"));
+    if (cpu_data_ptr) {
+        DBGLOG("HBFX @ obtained _cpu_data_ptr");
+    } else {
+        SYSLOG("HBFX @ failed to resolve _cpu_data_ptr");
+    }
+    
+    if (cpu_data_ptr) {
+        char cpu_data[256] = {};
+        memcpy(cpu_data, cpu_data_ptr, 256);
+    }
+    
     // Ignore all the errors for other processors
     patcher.clearError();
 }
 
 //==============================================================================
 
-static char * get_path(char* filepath)
-{
-    const char * slash = strrchr(filepath, '/');
-    if (slash != nullptr)
-    {
-        long offset = slash - filepath;
-        filepath[offset + 1] = '\0';   // chop off the string at the last directory component
-        return filepath;
-    }
-    return nullptr;
-}
-
-//==============================================================================
-
 void HBFX::writeNvramToFile(IODTNVRAM *nvram)
 {
-    DBGLOG("HBFX @ writeNvramToFile() running\n");
+    char filepath[] = {FILE_NVRAM_NAME};
+    DBGLOG("HBFX @ Nvram file path = %s\n", filepath);
     
-    char filepath[MAXPATHLEN+1] {};
-    strlcpy(filepath, config.hfilepath, sizeof(filepath));
+    //serialize and write this out
+    OSSerialize *s = OSSerialize::withCapacity(10000);
+    s->addString(NVRAM_FILE_HEADER);
+    nvram->serializeProperties(s);
+    s->addString(NVRAM_FILE_FOOTER);
 
-    OSObject * obj;
-    if ((obj = IOService::getPMRootDomain()->copyProperty(kIOHibernateFileKey)))
-    {
-        OSString * str;
-        if ((str = OSDynamicCast(OSString, obj)))
-            strlcpy(filepath, str->getCStringNoCopy(), sizeof(filepath));
-        obj->release();
-    }
+    int error = FileIO::writeBufferToFile(filepath, s->text(), strlen(s->text()));
+    if (error)
+        SYSLOG("HBFX @ Unable to write to %s, errno %d\n", filepath, error);
     
-    DBGLOG("HBFX @ Hibernate path = %s\n", filepath);
-    
-    if (get_path(filepath) != nullptr)
-    {
-        strlcat(filepath, FILE_NVRAM_NAME, sizeof(filepath) - strlen(filepath));
-        
-        DBGLOG("HBFX @ Nvram file path = %s\n", filepath);
-        
-        //serialize and write this out
-        OSSerialize *s = OSSerialize::withCapacity(10000);
-        s->addString(NVRAM_FILE_HEADER);
-        nvram->serializeProperties(s);
-        s->addString(NVRAM_FILE_FOOTER);
-
-        int error = FileIO::writeBufferToFile(filepath, s->text(), strlen(s->text()));
-        if (error)
-            SYSLOG("HBFX @ Unable to write to %s, errno %d\n", filepath, error);
-        
-        //now free the dictionaries && iter
-        s->release();
-    }
-    else
-        SYSLOG("HBFX @ Hibernate paths (%s) doesn't contain slash\n", filepath);
+    //now free the dictionaries && iter
+    s->release();
 }
