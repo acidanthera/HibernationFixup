@@ -10,16 +10,19 @@
 
 #include <Headers/kern_patcher.hpp>
 
+#define kIOHibernateStateKey		"IOHibernateState"
 #define kIOHibernateRTCVariablesKey	"IOHibernateRTCVariables"
 #define kIOHibernateSMCVariablesKey	"IOHibernateSMCVariables"
 #define kFakeSMCHBKB                "fakesmc-key-HBKP-ch8*"
+#define kIOHibernateFileKey         "Hibernate File"
 
-#define kIOHibernateFileKey		"Hibernate File"
-#define FILE_NVRAM_NAME			"nvram.plist"
-#define NVRAM_FILE_HEADER		"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" \
-                                "<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n"\
-                                "<plist version=\"1.0\">\n"
-#define NVRAM_FILE_FOOTER		"\n</plist>\n"
+#define FILE_NVRAM_NAME             "/nvram.plist"
+
+#define NVRAM_FILE_HEADER           "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" \
+                                    "<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n"\
+                                    "<plist version=\"1.0\">\n"
+#define NVRAM_FILE_FOOTER           "\n</plist>\n"
+
 
 class IODTNVRAM;
 
@@ -35,7 +38,7 @@ private:
 	 *  @param patcher KernelPatcher instance
 	 */
     void processKernel(KernelPatcher &patcher);
-	
+    
 	/**
 	 *  IOHibernateSystemSleep callback type
 	 */
@@ -56,6 +59,12 @@ private:
      */
 
     void writeNvramToFile(IODTNVRAM *nvram);
+    
+    using t_hibernate_setup = kern_return_t (*) (void * header, boolean_t vmflush, void * page_list, void * page_list_wired, void * page_list_pal);
+    t_hibernate_setup hibernate_setup {nullptr};
+    void *gIOHibernateCurrentHeader {nullptr};
+    
+    void *cpu_data_ptr {nullptr};
 };
 
 #endif /* kern_hbfx_hpp */
