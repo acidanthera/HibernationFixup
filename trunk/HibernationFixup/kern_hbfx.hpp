@@ -60,11 +60,13 @@ private:
 
     void writeNvramToFile(IODTNVRAM *nvram);
     
-    using t_hibernate_setup = kern_return_t (*) (void * header, boolean_t vmflush, void * page_list, void * page_list_wired, void * page_list_pal);
-    t_hibernate_setup hibernate_setup {nullptr};
-    void *gIOHibernateCurrentHeader {nullptr};
+//    using t_hibernate_setup = kern_return_t (*) (void * header, boolean_t vmflush, void * page_list, void * page_list_wired, void * page_list_pal);
+//    t_hibernate_setup hibernate_setup {nullptr};
+//    void *gIOHibernateCurrentHeader {nullptr};
+
     
-    void *cpu_data_ptr {nullptr};
+    using t_sync = int (*) (__unused proc_t p, __unused struct sync_args *uap, __unused int32_t *retval);
+    t_sync sync;
 };
 
 #endif /* kern_hbfx_hpp */

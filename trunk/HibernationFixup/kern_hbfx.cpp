@@ -31,6 +31,8 @@ static const OSSymbol *gBoot0082Key = nullptr;
 static const OSSymbol *gBootNextKey = nullptr;
 static const OSSymbol *gFakeSMCHBKP = nullptr;
 
+extern proc_t kernproc;
+
 
 // gIOHibernateState, kIOHibernateStateKey
 enum
@@ -137,8 +139,14 @@ IOReturn HBFX::IOHibernateSystemSleep(void) {
                         
                         callbackHBFX->writeNvramToFile(nvram);
                
-                        if (callbackHBFX->hibernate_setup && callbackHBFX->gIOHibernateCurrentHeader)
-                            callbackHBFX->hibernate_setup(callbackHBFX->gIOHibernateCurrentHeader, true, 0, 0, 0);
+                        //if (callbackHBFX->hibernate_setup && callbackHBFX->gIOHibernateCurrentHeader)
+                        //    callbackHBFX->hibernate_setup(callbackHBFX->gIOHibernateCurrentHeader, true, 0, 0, 0);
+                        
+                        if (getKernelVersion() > KernelVersion::MountainLion && callbackHBFX->sync)
+                        {
+                            int retval;
+                            callbackHBFX->sync(kernproc, nullptr, &retval);
+                        }
                         
                         nvram->removeProperty(gBoot0082Key);
                         nvram->removeProperty(gBootNextKey);
@@ -177,31 +185,27 @@ void HBFX::processKernel(KernelPatcher &patcher)
         SYSLOG("HBFX @ failed to resolve _IOHibernateSystemSleep");
     }
     
-    sessionCallback = patcher.solveSymbol(KernelPatcher::KernelID, "_hibernate_setup");
+//    sessionCallback = patcher.solveSymbol(KernelPatcher::KernelID, "_hibernate_setup");
+//    if (sessionCallback) {
+//        DBGLOG("HBFX @ obtained _hibernate_setup");
+//        hibernate_setup = reinterpret_cast<t_hibernate_setup>(sessionCallback);
+//    } else {
+//        SYSLOG("HBFX @ failed to resolve _hibernate_setup");
+//    }
+//    
+//    gIOHibernateCurrentHeader = reinterpret_cast<void *>(patcher.solveSymbol(KernelPatcher::KernelID, "_gIOHibernateCurrentHeader"));
+//    if (gIOHibernateCurrentHeader) {
+//        DBGLOG("HBFX @ obtained _gIOHibernateCurrentHeader");
+//    } else {
+//        SYSLOG("HBFX @ failed to resolve _gIOHibernateCurrentHeader");
+//    }
+    
+    sessionCallback = patcher.solveSymbol(KernelPatcher::KernelID, "_sync");
     if (sessionCallback) {
-        DBGLOG("HBFX @ obtained _hibernate_setup");
-        hibernate_setup = reinterpret_cast<t_hibernate_setup>(sessionCallback);
+        DBGLOG("HBFX @ obtained _sync");
+        sync = reinterpret_cast<t_sync>(sessionCallback);
     } else {
-        SYSLOG("HBFX @ failed to resolve _hibernate_setup");
-    }
-    
-    gIOHibernateCurrentHeader = reinterpret_cast<void *>(patcher.solveSymbol(KernelPatcher::KernelID, "_gIOHibernateCurrentHeader"));
-    if (gIOHibernateCurrentHeader) {
-        DBGLOG("HBFX @ obtained _gIOHibernateCurrentHeader");
-    } else {
-        SYSLOG("HBFX @ failed to resolve _gIOHibernateCurrentHeader");
-    }
-    
-    cpu_data_ptr = reinterpret_cast<void *>(patcher.solveSymbol(KernelPatcher::KernelID, "_cpu_data_ptr"));
-    if (cpu_data_ptr) {
-        DBGLOG("HBFX @ obtained _cpu_data_ptr");
-    } else {
-        SYSLOG("HBFX @ failed to resolve _cpu_data_ptr");
-    }
-    
-    if (cpu_data_ptr) {
-        char cpu_data[256] = {};
-        memcpy(cpu_data, cpu_data_ptr, 256);
+        SYSLOG("HBFX @ failed to resolve _sync");
     }
     
     // Ignore all the errors for other processors
