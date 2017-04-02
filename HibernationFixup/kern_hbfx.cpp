@@ -138,9 +138,6 @@ IOReturn HBFX::IOHibernateSystemSleep(void) {
                         }
                         
                         callbackHBFX->writeNvramToFile(nvram);
-               
-                        //if (callbackHBFX->hibernate_setup && callbackHBFX->gIOHibernateCurrentHeader)
-                        //    callbackHBFX->hibernate_setup(callbackHBFX->gIOHibernateCurrentHeader, true, 0, 0, 0);
                         
                         if (getKernelVersion() > KernelVersion::MountainLion && callbackHBFX->sync)
                         {
@@ -170,6 +167,40 @@ IOReturn HBFX::IOHibernateSystemSleep(void) {
 
 //==============================================================================
 
+UInt32 HBFX::savePanicInfo(UInt8 *buffer, UInt32 length)
+{
+    UInt32 byteCount = 0;
+    
+    if (callbackHBFX && callbackPatcher && callbackHBFX->orgPESavePanicInfo)
+    {
+        byteCount = callbackHBFX->orgPESavePanicInfo(buffer, length);
+        
+//        if (IORegistryEntry *options = OSDynamicCast(IORegistryEntry, IORegistryEntry::fromPath("/options", gIODTPlane)))
+//        {
+//            if (IODTNVRAM *nvram = OSDynamicCast(IODTNVRAM, options))
+//            {
+//                callbackHBFX->writeNvramToFile(nvram);
+//                
+//                if (getKernelVersion() > KernelVersion::MountainLion && callbackHBFX->sync)
+//                {
+//                    int retval;
+//                    callbackHBFX->sync(kernproc, nullptr, &retval);
+//                }
+//            }
+//            else
+//                SYSLOG("HBFX @ Registry entry /options can't be casted to IONVRAM.");
+        
+            //OSSafeReleaseNULL(options);
+//        }
+//        else
+//            SYSLOG("HBFX @ Registry entry /options is not found.");
+    }
+    
+    return byteCount;
+}
+
+//==============================================================================
+
 void HBFX::processKernel(KernelPatcher &patcher)
 {
     auto sessionCallback = patcher.solveSymbol(KernelPatcher::KernelID, "_IOHibernateSystemSleep");
@@ -185,27 +216,28 @@ void HBFX::processKernel(KernelPatcher &patcher)
         SYSLOG("HBFX @ failed to resolve _IOHibernateSystemSleep");
     }
     
-//    sessionCallback = patcher.solveSymbol(KernelPatcher::KernelID, "_hibernate_setup");
-//    if (sessionCallback) {
-//        DBGLOG("HBFX @ obtained _hibernate_setup");
-//        hibernate_setup = reinterpret_cast<t_hibernate_setup>(sessionCallback);
-//    } else {
-//        SYSLOG("HBFX @ failed to resolve _hibernate_setup");
-//    }
-//    
-//    gIOHibernateCurrentHeader = reinterpret_cast<void *>(patcher.solveSymbol(KernelPatcher::KernelID, "_gIOHibernateCurrentHeader"));
-//    if (gIOHibernateCurrentHeader) {
-//        DBGLOG("HBFX @ obtained _gIOHibernateCurrentHeader");
-//    } else {
-//        SYSLOG("HBFX @ failed to resolve _gIOHibernateCurrentHeader");
-//    }
+    if (config.dumpNvram)
+    {
+        sessionCallback = patcher.solveSymbol(KernelPatcher::KernelID, "_sync");
+        if (sessionCallback) {
+            DBGLOG("HBFX @ obtained _sync");
+            sync = reinterpret_cast<t_sync>(sessionCallback);
+        } else {
+            SYSLOG("HBFX @ failed to resolve _sync");
+        }
     
-    sessionCallback = patcher.solveSymbol(KernelPatcher::KernelID, "_sync");
-    if (sessionCallback) {
-        DBGLOG("HBFX @ obtained _sync");
-        sync = reinterpret_cast<t_sync>(sessionCallback);
-    } else {
-        SYSLOG("HBFX @ failed to resolve _sync");
+        sessionCallback = patcher.solveSymbol(KernelPatcher::KernelID, "_PESavePanicInfo");
+        if (sessionCallback) {
+            DBGLOG("HBFX @ obtained _PESavePanicInfo");
+            orgPESavePanicInfo = reinterpret_cast<t_save_panic_info>(patcher.routeFunction(sessionCallback, reinterpret_cast<mach_vm_address_t>(savePanicInfo), true));
+            if (patcher.getError() == KernelPatcher::Error::NoError) {
+                DBGLOG("HBFX @ routed _PESavePanicInfo");
+            } else {
+                SYSLOG("HBFX @ failed to route _PESavePanicInfo");
+            }
+        } else {
+            SYSLOG("HBFX @ failed to resolve _PESavePanicInfo");
+        }
     }
     
     // Ignore all the errors for other processors
