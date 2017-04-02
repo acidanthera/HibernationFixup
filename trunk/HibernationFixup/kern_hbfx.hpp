@@ -44,27 +44,31 @@ private:
 	 */
 	using t_io_hibernate_system_sleep_callback = IOReturn (*)(void);
     
+    /**
+     *  PESavePanicInfo callback type
+     */
+    using t_save_panic_info = UInt32 (*) (UInt8 *buffer, UInt32 length);
+    
 	/**
 	 *  Hooked methods / callbacks
 	 */
-    static IOReturn IOHibernateSystemSleep(void);
+    static IOReturn     IOHibernateSystemSleep(void);
+    static UInt32       savePanicInfo(UInt8 *buffer, UInt32 length);
 
 	/**
 	 *  Trampolines for original method invocations
 	 */
-    t_io_hibernate_system_sleep_callback orgIOHibernateSystemSleep {nullptr};
+    t_io_hibernate_system_sleep_callback    orgIOHibernateSystemSleep {nullptr};
+    t_save_panic_info                       orgPESavePanicInfo {nullptr};
     
     /**
      *  Write NVRAM to file
      */
-
     void writeNvramToFile(IODTNVRAM *nvram);
     
-//    using t_hibernate_setup = kern_return_t (*) (void * header, boolean_t vmflush, void * page_list, void * page_list_wired, void * page_list_pal);
-//    t_hibernate_setup hibernate_setup {nullptr};
-//    void *gIOHibernateCurrentHeader {nullptr};
-
-    
+    /**
+     *  Sync file buffers
+     */
     using t_sync = int (*) (__unused proc_t p, __unused struct sync_args *uap, __unused int32_t *retval);
     t_sync sync;
 };
