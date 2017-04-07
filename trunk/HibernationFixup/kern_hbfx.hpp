@@ -45,32 +45,56 @@ private:
 	using t_io_hibernate_system_sleep_callback = IOReturn (*)(void);
     
     /**
-     *  PESavePanicInfo callback type
+     *  unpackA callback type
      */
-    using t_save_panic_info = UInt32 (*) (UInt8 *buffer, UInt32 length);
+    using t_unpack_a = UInt32 (*) (char *inbuf, uint32_t length);
+    
+    
     
 	/**
 	 *  Hooked methods / callbacks
 	 */
     static IOReturn     IOHibernateSystemSleep(void);
-    static UInt32       savePanicInfo(UInt8 *buffer, UInt32 length);
-
+    static void         unpackA(char *inbuf, uint32_t length);
+    
+    
 	/**
 	 *  Trampolines for original method invocations
 	 */
     t_io_hibernate_system_sleep_callback    orgIOHibernateSystemSleep {nullptr};
-    t_save_panic_info                       orgPESavePanicInfo {nullptr};
+    t_unpack_a                              orgUnpackA {nullptr};
+ 
     
     /**
      *  Write NVRAM to file
      */
-    void writeNvramToFile(IODTNVRAM *nvram);
+    bool writeNvramToFile(IODTNVRAM *nvram);
     
     /**
      *  Sync file buffers
      */
     using t_sync = int (*) (__unused proc_t p, __unused struct sync_args *uap, __unused int32_t *retval);
     t_sync sync;
+    
+    using t_preemption_enabled = boolean_t (*) (void);
+    t_preemption_enabled preemption_enabled {nullptr};
+
+    using t_enable_preemption = void (*) (void);
+    t_enable_preemption enable_preemption {nullptr};
+    
+    using t_disable_preemption = void (*) (void);
+    t_disable_preemption disable_preemption {nullptr};
+    
+    using t_ml_at_interrupt_context = boolean_t (*) (void);
+    t_ml_at_interrupt_context ml_at_interrupt_context {nullptr};
+    
+    using t_ml_get_interrupts_enabled = boolean_t (*) (void);
+    t_ml_get_interrupts_enabled ml_get_interrupts_enabled {nullptr};
+    
+    using t_ml_set_interrupts_enabled = boolean_t (*) (boolean_t enable);
+    t_ml_set_interrupts_enabled ml_set_interrupts_enabled {nullptr};
+    
+    IODTNVRAM *dtNvram {nullptr};
 };
 
 #endif /* kern_hbfx_hpp */

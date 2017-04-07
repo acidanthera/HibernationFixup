@@ -1,6 +1,6 @@
 //
-//  kern_hbfx.cpp
-//  HBFX
+//  kern_UBFX.cpp
+//  UBFX
 //
 //  Copyright © 2017 lvs1974. All rights reserved.
 //
@@ -18,6 +18,7 @@
 #include <IOKit/pwr_mgt/RootDomain.h>
 #include <IOKit/IODeviceTreeSupport.h>
 #include <IOKit/IONVRAM.h>
+
 
 
 // Only used in apple-driven callbacks
@@ -41,6 +42,7 @@ enum
     kIOHibernateStateHibernating         = 1,	/* writing image */
     kIOHibernateStateWakingFromHibernate = 2	/* booted and restored image */
 };
+
 
 //==============================================================================
 
@@ -79,7 +81,7 @@ IOReturn HBFX::IOHibernateSystemSleep(void) {
     
     IOReturn result = KERN_SUCCESS;
     
-    if (callbackHBFX && callbackPatcher && callbackHBFX->orgIOHibernateSystemSleep)
+    if (callbackHBFX && callbackHBFX->orgIOHibernateSystemSleep && callbackHBFX->dtNvram)
     {
         result = callbackHBFX->orgIOHibernateSystemSleep();
         DBGLOG("HBFX @ IOHibernateSystemSleep is called, result is: %x", result);
@@ -89,73 +91,58 @@ IOReturn HBFX::IOHibernateSystemSleep(void) {
         if (data != 0)
         {
             ioHibernateState = *((uint32_t *)data->getBytesNoCopy());
-            DBGLOG("HBFX @ Hibernation detected from IOPMRootDomain: state = %d", ioHibernateState);
+            DBGLOG("HBFX @ Current hibernate state from IOPMRootDomain is: %d", ioHibernateState);
         }
         
         if (result == KERN_SUCCESS || ioHibernateState == kIOHibernateStateHibernating)
         {
-            if (IORegistryEntry *options = OSDynamicCast(IORegistryEntry, IORegistryEntry::fromPath("/options", gIODTPlane)))
+            OSData *rtc = OSDynamicCast(OSData, IOService::getPMRootDomain()->getProperty(gIOHibernateRTCVariablesKey));
+            if (rtc && !callbackHBFX->dtNvram->getProperty(gIOHibernateRTCVariablesKey))
             {
-                if (IODTNVRAM *nvram = OSDynamicCast(IODTNVRAM, options))
+                if (!callbackHBFX->dtNvram->setProperty(gIOHibernateRTCVariablesKey, rtc))
+                    SYSLOG("HBFX @ IOHibernateRTCVariablesKey can't be written to NVRAM.");
+                else
                 {
-                    OSData *rtc = OSDynamicCast(OSData, IOService::getPMRootDomain()->getProperty(gIOHibernateRTCVariablesKey));
-                    if (rtc && !nvram->getProperty(gIOHibernateRTCVariablesKey))
+                    SYSLOG("HBFX @ IOHibernateRTCVariablesKey has been written to NVRAM.");
+        
+                    // we should remove fakesmc-key-HBKP-ch8* if it exists
+                    if (callbackHBFX->dtNvram->getProperty(gFakeSMCHBKP))
                     {
-                        if (!nvram->setProperty(gIOHibernateRTCVariablesKey, rtc))
-                            SYSLOG("HBFX @ IOHibernateRTCVariablesKey can't be written to NVRAM.");
-                        else
-                        {
-                            SYSLOG("HBFX @ IOHibernateRTCVariablesKey has been written to NVRAM.");
-                
-                            // we should remove fakesmc-key-HBKP-ch8* if it exists
-                            if (nvram->getProperty(gFakeSMCHBKP))
-                            {
-                                nvram->removeProperty(gFakeSMCHBKP);
-                                SYSLOG("HBFX @ fakesmc-key-HBKP-ch8* has been removed from NVRAM.");
-                            }
-                        }
-                    }
-                    
-                    OSData *smc = OSDynamicCast(OSData, IOService::getPMRootDomain()->getProperty(gIOHibernateSMCVariables));
-                    if (smc && !nvram->getProperty(gIOHibernateSMCVariables))
-                    {
-                        if (!nvram->setProperty(gIOHibernateSMCVariables, smc))
-                            SYSLOG("HBFX @ IOHibernateSMCVariablesKey can't be written to NVRAM.");
-                    }
-                    
-                    if (config.dumpNvram)
-                    {
-                        if (OSData *data = OSDynamicCast(OSData, nvram->getProperty(gIOHibernateBoot0082Key)))
-                        {
-                            if (!nvram->setProperty(gBoot0082Key, data))
-                                SYSLOG("HBFX @ Boot0082 can't be written!");
-                        }
-                        
-                        if (OSData *data = OSDynamicCast(OSData, nvram->getProperty(gIOHibernateBootNextKey)))
-                        {
-                            if (!nvram->setProperty(gBootNextKey, data))
-                                SYSLOG("HBFX @ BootNext can't be written!");
-                        }
-                        
-                        callbackHBFX->writeNvramToFile(nvram);
-                        
-                        if (getKernelVersion() > KernelVersion::MountainLion && callbackHBFX->sync)
-                        {
-                            int retval;
-                            callbackHBFX->sync(kernproc, nullptr, &retval);
-                        }
-                        
-                        nvram->removeProperty(gBoot0082Key);
-                        nvram->removeProperty(gBootNextKey);
+                        callbackHBFX->dtNvram->removeProperty(gFakeSMCHBKP);
+                        SYSLOG("HBFX @ fakesmc-key-HBKP-ch8* has been removed from NVRAM.");
                     }
                 }
-                else
-                    SYSLOG("HBFX @ Registry entry /options can't be casted to IONVRAM.");
-                
-                OSSafeReleaseNULL(options);
             }
-            else
-                SYSLOG("HBFX @ Registry entry /options is not found.");
+            
+            OSData *smc = OSDynamicCast(OSData, IOService::getPMRootDomain()->getProperty(gIOHibernateSMCVariables));
+            if (smc && !callbackHBFX->dtNvram->getProperty(gIOHibernateSMCVariables))
+            {
+                if (!callbackHBFX->dtNvram->setProperty(gIOHibernateSMCVariables, smc))
+                    SYSLOG("HBFX @ IOHibernateSMCVariablesKey can't be written to NVRAM.");
+            }
+            
+            if (config.dumpNvram)
+            {
+                if (OSData *data = OSDynamicCast(OSData, callbackHBFX->dtNvram->getProperty(gIOHibernateBoot0082Key)))
+                {
+                    if (!callbackHBFX->dtNvram->setProperty(gBoot0082Key, data))
+                        SYSLOG("HBFX @ Boot0082 can't be written!");
+                }
+                
+                if (OSData *data = OSDynamicCast(OSData, callbackHBFX->dtNvram->getProperty(gIOHibernateBootNextKey)))
+                {
+                    if (!callbackHBFX->dtNvram->setProperty(gBootNextKey, data))
+                        SYSLOG("HBFX @ BootNext can't be written!");
+                }
+                
+                callbackHBFX->writeNvramToFile(callbackHBFX->dtNvram);
+                
+                if (callbackHBFX->sync)
+                    callbackHBFX->sync(kernproc, nullptr, nullptr);
+                
+                callbackHBFX->dtNvram->removeProperty(gBoot0082Key);
+                callbackHBFX->dtNvram->removeProperty(gBootNextKey);
+            }
         }
     }
     else {
@@ -167,42 +154,52 @@ IOReturn HBFX::IOHibernateSystemSleep(void) {
 
 //==============================================================================
 
-UInt32 HBFX::savePanicInfo(UInt8 *buffer, UInt32 length)
+void HBFX::unpackA(char *inbuf, uint32_t length)
 {
-    UInt32 byteCount = 0;
+    if (callbackHBFX && callbackHBFX->orgUnpackA)
+        callbackHBFX->orgUnpackA(inbuf, length);
     
-    if (callbackHBFX && callbackPatcher && callbackHBFX->orgPESavePanicInfo)
+    if (callbackHBFX && !callbackHBFX->ml_at_interrupt_context())
     {
-        byteCount = callbackHBFX->orgPESavePanicInfo(buffer, length);
-        
-//        if (IORegistryEntry *options = OSDynamicCast(IORegistryEntry, IORegistryEntry::fromPath("/options", gIODTPlane)))
-//        {
-//            if (IODTNVRAM *nvram = OSDynamicCast(IODTNVRAM, options))
-//            {
-//                callbackHBFX->writeNvramToFile(nvram);
-//                
-//                if (getKernelVersion() > KernelVersion::MountainLion && callbackHBFX->sync)
-//                {
-//                    int retval;
-//                    callbackHBFX->sync(kernproc, nullptr, &retval);
-//                }
-//            }
-//            else
-//                SYSLOG("HBFX @ Registry entry /options can't be casted to IONVRAM.");
-        
-            //OSSafeReleaseNULL(options);
-//        }
-//        else
-//            SYSLOG("HBFX @ Registry entry /options is not found.");
+        callbackHBFX->ml_set_interrupts_enabled(TRUE);
+        if (callbackHBFX->ml_get_interrupts_enabled())
+        {
+            while (!callbackHBFX->preemption_enabled())
+            {
+                callbackHBFX->enable_preemption();
+                if (!callbackHBFX->ml_get_interrupts_enabled())
+                    callbackHBFX->ml_set_interrupts_enabled(TRUE);
+            }
+            
+            if (callbackHBFX->writeNvramToFile(callbackHBFX->dtNvram))
+            {
+                if (callbackHBFX->sync)
+                    callbackHBFX->sync(kernproc, nullptr, nullptr);
+            }
+            
+            callbackHBFX->disable_preemption();
+            callbackHBFX->ml_set_interrupts_enabled(FALSE);
+        }
     }
-    
-    return byteCount;
 }
 
 //==============================================================================
 
 void HBFX::processKernel(KernelPatcher &patcher)
 {
+    if (IORegistryEntry *options = OSDynamicCast(IORegistryEntry, IORegistryEntry::fromPath("/options", gIODTPlane)))
+    {
+        if (IODTNVRAM *nvram = OSDynamicCast(IODTNVRAM, options))
+        {
+            dtNvram = nvram;
+            DBGLOG("HBFX @ IODTNVRAM object is aquired");
+        }
+        else
+            SYSLOG("HBFX @ Registry entry /options can't be casted to IONVRAM.");
+    }
+    else
+        SYSLOG("HBFX @ Registry entry /options is not found.");
+
     auto sessionCallback = patcher.solveSymbol(KernelPatcher::KernelID, "_IOHibernateSystemSleep");
     if (sessionCallback) {
         DBGLOG("HBFX @ obtained _IOHibernateSystemSleep");
@@ -225,18 +222,70 @@ void HBFX::processKernel(KernelPatcher &patcher)
         } else {
             SYSLOG("HBFX @ failed to resolve _sync");
         }
-    
-        sessionCallback = patcher.solveSymbol(KernelPatcher::KernelID, "_PESavePanicInfo");
+        
+        sessionCallback = patcher.solveSymbol(KernelPatcher::KernelID, "_preemption_enabled");
         if (sessionCallback) {
-            DBGLOG("HBFX @ obtained _PESavePanicInfo");
-            orgPESavePanicInfo = reinterpret_cast<t_save_panic_info>(patcher.routeFunction(sessionCallback, reinterpret_cast<mach_vm_address_t>(savePanicInfo), true));
-            if (patcher.getError() == KernelPatcher::Error::NoError) {
-                DBGLOG("HBFX @ routed _PESavePanicInfo");
-            } else {
-                SYSLOG("HBFX @ failed to route _PESavePanicInfo");
-            }
+            DBGLOG("HBFX @ obtained _preemption_enabled");
+            preemption_enabled = reinterpret_cast<t_preemption_enabled>(sessionCallback);
         } else {
-            SYSLOG("HBFX @ failed to resolve _PESavePanicInfo");
+            SYSLOG("HBFX @ failed to resolve _preemption_enabled");
+        }
+        
+        sessionCallback = patcher.solveSymbol(KernelPatcher::KernelID, "__enable_preemption");
+        if (sessionCallback) {
+            DBGLOG("HBFX @ obtained __enable_preemption");
+            enable_preemption = reinterpret_cast<t_enable_preemption>(sessionCallback);
+        } else {
+            SYSLOG("HBFX @ failed to resolve __enable_preemption");
+        }
+        
+        sessionCallback = patcher.solveSymbol(KernelPatcher::KernelID, "__disable_preemption");
+        if (sessionCallback) {
+            DBGLOG("HBFX @ obtained __disable_preemption");
+            disable_preemption = reinterpret_cast<t_disable_preemption>(sessionCallback);
+        } else {
+            SYSLOG("HBFX @ failed to resolve __disable_preemption");
+        }
+        
+        sessionCallback = patcher.solveSymbol(KernelPatcher::KernelID, "_ml_at_interrupt_context");
+        if (sessionCallback) {
+            DBGLOG("HBFX @ obtained _ml_at_interrupt_context");
+            ml_at_interrupt_context = reinterpret_cast<t_ml_at_interrupt_context>(sessionCallback);
+        } else {
+            SYSLOG("HBFX @ failed to resolve _ml_at_interrupt_context");
+        }
+        
+        sessionCallback = patcher.solveSymbol(KernelPatcher::KernelID, "_ml_get_interrupts_enabled");
+        if (sessionCallback) {
+            DBGLOG("HBFX @ obtained _ml_get_interrupts_enabled");
+            ml_get_interrupts_enabled = reinterpret_cast<t_ml_get_interrupts_enabled>(sessionCallback);
+        } else {
+            SYSLOG("HBFX @ failed to resolve _ml_get_interrupts_enabled");
+        }
+        
+        sessionCallback = patcher.solveSymbol(KernelPatcher::KernelID, "_ml_set_interrupts_enabled");
+        if (sessionCallback) {
+            DBGLOG("HBFX @ obtained _ml_set_interrupts_enabled");
+            ml_set_interrupts_enabled = reinterpret_cast<t_ml_set_interrupts_enabled>(sessionCallback);
+        } else {
+            SYSLOG("HBFX @ failed to resolve _ml_set_interrupts_enabled");
+        }
+        
+        if (sync && preemption_enabled && enable_preemption && disable_preemption && ml_at_interrupt_context &&
+            ml_get_interrupts_enabled && ml_set_interrupts_enabled)
+        {
+            sessionCallback = patcher.solveSymbol(KernelPatcher::KernelID, "_unpackA");
+            if (sessionCallback) {
+                DBGLOG("HBFX @ obtained _unpackA");
+                orgUnpackA = reinterpret_cast<t_unpack_a>(patcher.routeFunction(sessionCallback, reinterpret_cast<mach_vm_address_t>(unpackA), true));
+                if (patcher.getError() == KernelPatcher::Error::NoError) {
+                    DBGLOG("HBFX @ routed _unpackA");
+                } else {
+                    SYSLOG("HBFX @ failed to route _unpackA");
+                }
+            } else {
+                SYSLOG("HBFX @ failed to resolve _unpackA");
+            }
         }
     }
     
@@ -246,10 +295,10 @@ void HBFX::processKernel(KernelPatcher &patcher)
 
 //==============================================================================
 
-void HBFX::writeNvramToFile(IODTNVRAM *nvram)
+bool HBFX::writeNvramToFile(IODTNVRAM *nvram)
 {
     char filepath[] = {FILE_NVRAM_NAME};
-    DBGLOG("HBFX @ Nvram file path = %s\n", filepath);
+    //DBGLOG("HBFX @ Nvram file path = %s\n", filepath);
     
     //serialize and write this out
     OSSerialize *s = OSSerialize::withCapacity(10000);
@@ -258,9 +307,11 @@ void HBFX::writeNvramToFile(IODTNVRAM *nvram)
     s->addString(NVRAM_FILE_FOOTER);
 
     int error = FileIO::writeBufferToFile(filepath, s->text(), strlen(s->text()));
-    if (error)
-        SYSLOG("HBFX @ Unable to write to %s, errno %d\n", filepath, error);
+    //if (error)
+    //    SYSLOG("HBFX @ Unable to write to %s, errno %d\n", filepath, error);
     
     //now free the dictionaries && iter
     s->release();
+    
+    return (error == 0);
 }
