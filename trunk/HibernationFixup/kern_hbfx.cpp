@@ -28,9 +28,9 @@ static const OSSymbol *gIOHibernateRTCVariablesKey = nullptr;
 static const OSSymbol *gIOHibernateSMCVariables = nullptr;
 static const OSSymbol *gIOHibernateBoot0082Key = nullptr;
 static const OSSymbol *gIOHibernateBootNextKey = nullptr;
-static const OSSymbol *gBoot0082Key = nullptr;
-static const OSSymbol *gBootNextKey = nullptr;
-static const OSSymbol *gFakeSMCHBKP = nullptr;
+static const OSSymbol *gBoot0082Key  = nullptr;
+static const OSSymbol *gBootNextKey  = nullptr;
+static const OSSymbol *gFakeSMCHBKP  = nullptr;
 
 extern proc_t kernproc;
 
@@ -154,11 +154,39 @@ IOReturn HBFX::IOHibernateSystemSleep(void) {
 
 //==============================================================================
 
+int HBFX::packA(char *inbuf, uint32_t length, uint32_t buflen)
+{
+    if (callbackHBFX && !callbackHBFX->ml_at_interrupt_context())
+    {
+        callbackHBFX->ml_set_interrupts_enabled(TRUE);
+        if (callbackHBFX->ml_get_interrupts_enabled())
+        {
+            while (!callbackHBFX->preemption_enabled())
+            {
+                callbackHBFX->enable_preemption();
+                if (!callbackHBFX->ml_get_interrupts_enabled())
+                    callbackHBFX->ml_set_interrupts_enabled(TRUE);
+            }
+            
+            FileIO::writeBufferToFile("/panic.info", inbuf, length);
+            callbackHBFX->sync(kernproc, nullptr, nullptr);
+            
+            callbackHBFX->disable_preemption();
+            callbackHBFX->ml_set_interrupts_enabled(FALSE);
+        }
+    }
+    
+    int bufpos = 0;
+    if (callbackHBFX && callbackHBFX->orgPackA)
+        bufpos = callbackHBFX->orgPackA(inbuf, length, buflen);
+    
+    return bufpos;
+}
+
+//==============================================================================
+
 void HBFX::unpackA(char *inbuf, uint32_t length)
 {
-    if (callbackHBFX && callbackHBFX->orgUnpackA)
-        callbackHBFX->orgUnpackA(inbuf, length);
-    
     if (callbackHBFX && !callbackHBFX->ml_at_interrupt_context())
     {
         callbackHBFX->ml_set_interrupts_enabled(TRUE);
@@ -172,15 +200,15 @@ void HBFX::unpackA(char *inbuf, uint32_t length)
             }
             
             if (callbackHBFX->writeNvramToFile(callbackHBFX->dtNvram))
-            {
-                if (callbackHBFX->sync)
-                    callbackHBFX->sync(kernproc, nullptr, nullptr);
-            }
+                callbackHBFX->sync(kernproc, nullptr, nullptr);
             
             callbackHBFX->disable_preemption();
             callbackHBFX->ml_set_interrupts_enabled(FALSE);
         }
     }
+    
+    if (callbackHBFX && callbackHBFX->orgUnpackA)
+        callbackHBFX->orgUnpackA(inbuf, length);
 }
 
 //==============================================================================
@@ -274,6 +302,19 @@ void HBFX::processKernel(KernelPatcher &patcher)
         if (sync && preemption_enabled && enable_preemption && disable_preemption && ml_at_interrupt_context &&
             ml_get_interrupts_enabled && ml_set_interrupts_enabled)
         {
+            sessionCallback = patcher.solveSymbol(KernelPatcher::KernelID, "_packA");
+            if (sessionCallback) {
+                DBGLOG("HBFX @ obtained _packA");
+                orgPackA = reinterpret_cast<t_pack_a>(patcher.routeFunction(sessionCallback, reinterpret_cast<mach_vm_address_t>(packA), true));
+                if (patcher.getError() == KernelPatcher::Error::NoError) {
+                    DBGLOG("HBFX @ routed _packA");
+                } else {
+                    SYSLOG("HBFX @ failed to route _packA");
+                }
+            } else {
+                SYSLOG("HBFX @ failed to resolve _packA");
+            }
+            
             sessionCallback = patcher.solveSymbol(KernelPatcher::KernelID, "_unpackA");
             if (sessionCallback) {
                 DBGLOG("HBFX @ obtained _unpackA");

@@ -10,18 +10,20 @@
 
 #include <Headers/kern_patcher.hpp>
 
-#define kIOHibernateStateKey		"IOHibernateState"
-#define kIOHibernateRTCVariablesKey	"IOHibernateRTCVariables"
-#define kIOHibernateSMCVariablesKey	"IOHibernateSMCVariables"
-#define kFakeSMCHBKB                "fakesmc-key-HBKP-ch8*"
-#define kIOHibernateFileKey         "Hibernate File"
+#define kIOHibernateStateKey            "IOHibernateState"
+#define kIOHibernateRTCVariablesKey     "IOHibernateRTCVariables"
+#define kIOHibernateSMCVariablesKey     "IOHibernateSMCVariables"
+#define kFakeSMCHBKB                    "fakesmc-key-HBKP-ch8*"
+#define kIOHibernateFileKey             "Hibernate File"
+#define kIODTNVRAMPanicInfoPartitonName "APL,OSXPanic"
+#define kIODTNVRAMPanicInfoKey          "aapl,panic-info"
 
-#define FILE_NVRAM_NAME             "/nvram.plist"
+#define FILE_NVRAM_NAME                 "/nvram.plist"
 
-#define NVRAM_FILE_HEADER           "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" \
-                                    "<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n"\
-                                    "<plist version=\"1.0\">\n"
-#define NVRAM_FILE_FOOTER           "\n</plist>\n"
+#define NVRAM_FILE_HEADER               "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" \
+                                        "<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n"\
+                                        "<plist version=\"1.0\">\n"
+#define NVRAM_FILE_FOOTER               "\n</plist>\n"
 
 
 class IODTNVRAM;
@@ -45,6 +47,11 @@ private:
 	using t_io_hibernate_system_sleep_callback = IOReturn (*)(void);
     
     /**
+     *  packA callback type
+     */
+    using t_pack_a = UInt32 (*) (char *inbuf, uint32_t length, uint32_t buflen);
+    
+    /**
      *  unpackA callback type
      */
     using t_unpack_a = UInt32 (*) (char *inbuf, uint32_t length);
@@ -55,6 +62,7 @@ private:
 	 *  Hooked methods / callbacks
 	 */
     static IOReturn     IOHibernateSystemSleep(void);
+    static int          packA(char *inbuf, uint32_t length, uint32_t buflen);
     static void         unpackA(char *inbuf, uint32_t length);
     
     
@@ -62,6 +70,7 @@ private:
 	 *  Trampolines for original method invocations
 	 */
     t_io_hibernate_system_sleep_callback    orgIOHibernateSystemSleep {nullptr};
+    t_pack_a                                orgPackA {nullptr};
     t_unpack_a                              orgUnpackA {nullptr};
  
     
