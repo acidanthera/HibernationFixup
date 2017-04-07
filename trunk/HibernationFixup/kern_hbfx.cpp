@@ -168,7 +168,7 @@ int HBFX::packA(char *inbuf, uint32_t length, uint32_t buflen)
                     callbackHBFX->ml_set_interrupts_enabled(TRUE);
             }
             
-            FileIO::writeBufferToFile("/panic.info", inbuf, length);
+            FileIO::writeBufferToFile(FILE_PINFO_NAME, inbuf, length);
             callbackHBFX->sync(kernproc, nullptr, nullptr);
             
             callbackHBFX->disable_preemption();
