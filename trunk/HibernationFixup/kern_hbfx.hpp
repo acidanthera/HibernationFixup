@@ -15,11 +15,8 @@
 #define kIOHibernateSMCVariablesKey     "IOHibernateSMCVariables"
 #define kFakeSMCHBKB                    "fakesmc-key-HBKP-ch8*"
 #define kIOHibernateFileKey             "Hibernate File"
-#define kIODTNVRAMPanicInfoPartitonName "APL,OSXPanic"
-#define kIODTNVRAMPanicInfoKey          "aapl,panic-info"
 
 #define FILE_NVRAM_NAME                 "/nvram.plist"
-#define FILE_PINFO_NAME                 "/panic.info"
 
 #define NVRAM_FILE_HEADER               "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" \
                                         "<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n"\
@@ -78,7 +75,7 @@ private:
     /**
      *  Write NVRAM to file
      */
-    bool writeNvramToFile(IODTNVRAM *nvram);
+    bool writeNvramToFile();
     
     /**
      *  Sync file buffers

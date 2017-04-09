@@ -88,7 +88,7 @@ IOReturn HBFX::IOHibernateSystemSleep(void) {
         
         uint32_t ioHibernateState = kIOHibernateStateInactive;
         OSData *data = OSDynamicCast(OSData, IOService::getPMRootDomain()->getProperty(kIOHibernateStateKey));
-        if (data != 0)
+        if (data != nullptr)
         {
             ioHibernateState = *((uint32_t *)data->getBytesNoCopy());
             DBGLOG("HBFX @ Current hibernate state from IOPMRootDomain is: %d", ioHibernateState);
@@ -135,7 +135,7 @@ IOReturn HBFX::IOHibernateSystemSleep(void) {
                         SYSLOG("HBFX @ BootNext can't be written!");
                 }
                 
-                callbackHBFX->writeNvramToFile(callbackHBFX->dtNvram);
+                callbackHBFX->writeNvramToFile();
                 
                 if (callbackHBFX->sync)
                     callbackHBFX->sync(kernproc, nullptr, nullptr);
@@ -156,6 +156,11 @@ IOReturn HBFX::IOHibernateSystemSleep(void) {
 
 int HBFX::packA(char *inbuf, uint32_t length, uint32_t buflen)
 {
+    char key[128];
+    unsigned int bufpos = 0;
+    if (callbackHBFX && callbackHBFX->orgPackA)
+        bufpos = callbackHBFX->orgPackA(inbuf, length, buflen);
+    
     if (callbackHBFX && !callbackHBFX->ml_at_interrupt_context())
     {
         callbackHBFX->ml_set_interrupts_enabled(TRUE);
@@ -168,7 +173,21 @@ int HBFX::packA(char *inbuf, uint32_t length, uint32_t buflen)
                     callbackHBFX->ml_set_interrupts_enabled(TRUE);
             }
             
-            FileIO::writeBufferToFile(FILE_PINFO_NAME, inbuf, length);
+            unsigned int pi_size = bufpos ? bufpos : length;
+            const unsigned int max_size = 768;
+            int counter = 0;
+            while (pi_size > 0)
+            {
+                unsigned int part_size = (pi_size > max_size) ? max_size : pi_size;
+                OSData *data = OSData::withBytes(inbuf, part_size);
+
+                snprintf(key, sizeof(key), "AAPL,PanicInfo%04d", counter++);
+                callbackHBFX->dtNvram->setProperty(OSSymbol::withCString(key), data);
+                pi_size -= part_size;
+                inbuf += part_size;
+            }
+            
+            callbackHBFX->writeNvramToFile();
             callbackHBFX->sync(kernproc, nullptr, nullptr);
             
             callbackHBFX->disable_preemption();
@@ -176,39 +195,7 @@ int HBFX::packA(char *inbuf, uint32_t length, uint32_t buflen)
         }
     }
     
-    int bufpos = 0;
-    if (callbackHBFX && callbackHBFX->orgPackA)
-        bufpos = callbackHBFX->orgPackA(inbuf, length, buflen);
-    
     return bufpos;
-}
-
-//==============================================================================
-
-void HBFX::unpackA(char *inbuf, uint32_t length)
-{
-    if (callbackHBFX && !callbackHBFX->ml_at_interrupt_context())
-    {
-        callbackHBFX->ml_set_interrupts_enabled(TRUE);
-        if (callbackHBFX->ml_get_interrupts_enabled())
-        {
-            while (!callbackHBFX->preemption_enabled())
-            {
-                callbackHBFX->enable_preemption();
-                if (!callbackHBFX->ml_get_interrupts_enabled())
-                    callbackHBFX->ml_set_interrupts_enabled(TRUE);
-            }
-            
-            if (callbackHBFX->writeNvramToFile(callbackHBFX->dtNvram))
-                callbackHBFX->sync(kernproc, nullptr, nullptr);
-            
-            callbackHBFX->disable_preemption();
-            callbackHBFX->ml_set_interrupts_enabled(FALSE);
-        }
-    }
-    
-    if (callbackHBFX && callbackHBFX->orgUnpackA)
-        callbackHBFX->orgUnpackA(inbuf, length);
 }
 
 //==============================================================================
@@ -314,19 +301,6 @@ void HBFX::processKernel(KernelPatcher &patcher)
             } else {
                 SYSLOG("HBFX @ failed to resolve _packA");
             }
-            
-            sessionCallback = patcher.solveSymbol(KernelPatcher::KernelID, "_unpackA");
-            if (sessionCallback) {
-                DBGLOG("HBFX @ obtained _unpackA");
-                orgUnpackA = reinterpret_cast<t_unpack_a>(patcher.routeFunction(sessionCallback, reinterpret_cast<mach_vm_address_t>(unpackA), true));
-                if (patcher.getError() == KernelPatcher::Error::NoError) {
-                    DBGLOG("HBFX @ routed _unpackA");
-                } else {
-                    SYSLOG("HBFX @ failed to route _unpackA");
-                }
-            } else {
-                SYSLOG("HBFX @ failed to resolve _unpackA");
-            }
         }
     }
     
@@ -336,20 +310,17 @@ void HBFX::processKernel(KernelPatcher &patcher)
 
 //==============================================================================
 
-bool HBFX::writeNvramToFile(IODTNVRAM *nvram)
+bool HBFX::writeNvramToFile()
 {
     char filepath[] = {FILE_NVRAM_NAME};
-    //DBGLOG("HBFX @ Nvram file path = %s\n", filepath);
     
     //serialize and write this out
-    OSSerialize *s = OSSerialize::withCapacity(10000);
+    OSSerialize *s = OSSerialize::withCapacity(80000);
     s->addString(NVRAM_FILE_HEADER);
-    nvram->serializeProperties(s);
+    dtNvram->serializeProperties(s);
     s->addString(NVRAM_FILE_FOOTER);
 
     int error = FileIO::writeBufferToFile(filepath, s->text(), strlen(s->text()));
-    //if (error)
-    //    SYSLOG("HBFX @ Unable to write to %s, errno %d\n", filepath, error);
     
     //now free the dictionaries && iter
     s->release();
