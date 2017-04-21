@@ -39,6 +39,16 @@ private:
 	 */
     void processKernel(KernelPatcher &patcher);
     
+    /**
+     *  Patch kext if needed and prepare other patches
+     *
+     *  @param patcher KernelPatcher instance
+     *  @param index   kinfo handle
+     *  @param address kinfo load address
+     *  @param size    kinfo memory size
+     */
+    void processKext(KernelPatcher &patcher, size_t index, mach_vm_address_t address, size_t size);
+    
 	/**
 	 *  IOHibernateSystemSleep callback type
 	 */
@@ -55,7 +65,6 @@ private:
     using t_unpack_a = UInt32 (*) (char *inbuf, uint32_t length);
     
     
-    
 	/**
 	 *  Hooked methods / callbacks
 	 */
@@ -63,19 +72,21 @@ private:
     static int          packA(char *inbuf, uint32_t length, uint32_t buflen);
     static void         unpackA(char *inbuf, uint32_t length);
     
-    
 	/**
 	 *  Trampolines for original method invocations
 	 */
     t_io_hibernate_system_sleep_callback    orgIOHibernateSystemSleep {nullptr};
     t_pack_a                                orgPackA {nullptr};
     t_unpack_a                              orgUnpackA {nullptr};
- 
+    
+    size_t io_pci_family_load_index {0};
     
     /**
      *  Write NVRAM to file
      */
     bool writeNvramToFile();
+    
+    uint8_t *findCallInstructionInMemory(mach_vm_address_t memory, size_t mem_size, mach_vm_address_t called_method);
     
     /**
      *  Sync file buffers
@@ -102,6 +113,26 @@ private:
     t_ml_set_interrupts_enabled ml_set_interrupts_enabled {nullptr};
     
     IODTNVRAM *dtNvram {nullptr};
+    
+    uint8_t *extended_config_write16 {nullptr};
+    uint8_t original_code[128];
+    size_t  instruction_size {0};
+
+    
+    /**
+     *  Current progress mask
+     */
+    struct ProcessingState {
+        enum {
+            NothingReady = 0,
+            IOPCIFamilyTouted = 2,
+            KernelRouted = 4,
+            EverythingDone = IOPCIFamilyTouted | KernelRouted,
+        };
+    };
+    int progressState {ProcessingState::NothingReady};
+    
+    Disassembler disasm;
 };
 
 #endif /* kern_hbfx_hpp */
