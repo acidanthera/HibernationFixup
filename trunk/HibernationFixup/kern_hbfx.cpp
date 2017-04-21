@@ -7,7 +7,6 @@
 
 #include <Headers/kern_api.hpp>
 #include <Headers/kern_file.hpp>
-#include <Headers/kern_util.hpp>
 
 #include "kern_config.hpp"
 #include "kern_hbfx.hpp"
@@ -44,20 +43,49 @@ enum
 };
 
 
+static const char *kextIOPCIFamilyPath[] { "/System/Library/Extensions/IOPCIFamily.kext/IOPCIFamily" };
+
+static KernelPatcher::KextInfo kextList[] {
+    { "com.apple.iokit.IOPCIFamily", kextIOPCIFamilyPath, 1, true, {}, KernelPatcher::KextInfo::Unloaded },
+};
+
+static size_t kextListSize {1};
+
+
+
 //==============================================================================
 
-bool HBFX::init() {
-    LiluAPI::Error error = lilu.onPatcherLoad(
-	[](void *user, KernelPatcher &patcher) {
-		callbackHBFX = static_cast<HBFX *>(user);
-		callbackPatcher = &patcher;
-		callbackHBFX->processKernel(patcher);
-	}, this);
-	
-	if (error != LiluAPI::Error::NoError) {
-		SYSLOG("HBFX @ failed to register onPatcherLoad method %d", error);
-		return false;
-	}
+bool HBFX::init()
+{
+    if (!disasm.init()) {
+        DBGLOG("HBFX @ failed to use disasm");
+        return false;
+    }
+    
+    LiluAPI::Error error = lilu.onKextLoad(kextList, kextListSize,
+                                           [](void *user, KernelPatcher &patcher, size_t index, mach_vm_address_t address, size_t size) {
+                                               callbackHBFX = static_cast<HBFX *>(user);
+                                               callbackPatcher = &patcher;
+                                               callbackHBFX->processKext(patcher, index, address, size);
+                                           }, this);
+    
+    if (error != LiluAPI::Error::NoError) {
+        SYSLOG("HBFX @ failed to register onKextLoad method %d", error);
+        return false;
+    }
+
+//    LiluAPI::Error error = lilu.onPatcherLoad(
+//                                              [](void *user, KernelPatcher &patcher) {
+//                                                  callbackHBFX = static_cast<HBFX *>(user);
+//                                                  callbackPatcher = &patcher;
+//                                                  callbackHBFX->processKernel(patcher);
+//                                              }, this);
+//
+//
+//    if (error != LiluAPI::Error::NoError) {
+//        SYSLOG("HBFX @ failed to register onPatcherLoad method %d", error);
+//        return false;
+//    }
     
     gIOHibernateRTCVariablesKey = OSSymbol::withCStringNoCopy(kIOHibernateRTCVariablesKey);
     gIOHibernateSMCVariables    = OSSymbol::withCStringNoCopy(kIOHibernateSMCVariablesKey);
@@ -72,7 +100,10 @@ bool HBFX::init() {
 
 //==============================================================================
 
-void HBFX::deinit() {
+void HBFX::deinit()
+{
+    // Deinitialise disassembler
+    disasm.deinit();
 }
 
 //==============================================================================
@@ -85,6 +116,8 @@ IOReturn HBFX::IOHibernateSystemSleep(void) {
     {
         result = callbackHBFX->orgIOHibernateSystemSleep();
         DBGLOG("HBFX @ IOHibernateSystemSleep is called, result is: %x", result);
+        
+        bool interrupts_enabled = callbackHBFX->ml_get_interrupts_enabled();
         
         uint32_t ioHibernateState = kIOHibernateStateInactive;
         OSData *data = OSDynamicCast(OSData, IOService::getPMRootDomain()->getProperty(kIOHibernateStateKey));
@@ -143,6 +176,32 @@ IOReturn HBFX::IOHibernateSystemSleep(void) {
                 callbackHBFX->dtNvram->removeProperty(gBoot0082Key);
                 callbackHBFX->dtNvram->removeProperty(gBootNextKey);
             }
+            
+            if (callbackHBFX->extended_config_write16)
+            {
+                if (MachInfo::setKernelWriting(true) == KERN_SUCCESS)
+                {
+                    memset(callbackHBFX->extended_config_write16, 0x90, callbackHBFX->instruction_size);
+                    DBGLOG("HBFX::restoreMachineState is patched");
+                    MachInfo::setKernelWriting(false);
+                }
+                else
+                    SYSLOG("MachInfo::setKernelWriting failed");
+                callbackHBFX->ml_set_interrupts_enabled(interrupts_enabled);
+            }
+        }
+        else if (callbackHBFX->extended_config_write16 &&
+                 memcmp(callbackHBFX->extended_config_write16, callbackHBFX->original_code, callbackHBFX->instruction_size))
+        {
+            if (MachInfo::setKernelWriting(true) == KERN_SUCCESS)
+            {
+                memcpy(callbackHBFX->extended_config_write16, callbackHBFX->original_code, callbackHBFX->instruction_size);
+                DBGLOG("HBFX::restoreMachineState is restored");
+                MachInfo::setKernelWriting(false);
+            }
+            else
+                SYSLOG("MachInfo::setKernelWriting failed");
+            callbackHBFX->ml_set_interrupts_enabled(interrupts_enabled);
         }
     }
     else {
@@ -215,10 +274,10 @@ void HBFX::processKernel(KernelPatcher &patcher)
     else
         SYSLOG("HBFX @ Registry entry /options is not found.");
 
-    auto sessionCallback = patcher.solveSymbol(KernelPatcher::KernelID, "_IOHibernateSystemSleep");
-    if (sessionCallback) {
+    auto method_address = patcher.solveSymbol(KernelPatcher::KernelID, "_IOHibernateSystemSleep");
+    if (method_address) {
         DBGLOG("HBFX @ obtained _IOHibernateSystemSleep");
-        orgIOHibernateSystemSleep = reinterpret_cast<t_io_hibernate_system_sleep_callback>(patcher.routeFunction(sessionCallback, reinterpret_cast<mach_vm_address_t>(IOHibernateSystemSleep), true));
+        orgIOHibernateSystemSleep = reinterpret_cast<t_io_hibernate_system_sleep_callback>(patcher.routeFunction(method_address, reinterpret_cast<mach_vm_address_t>(IOHibernateSystemSleep), true));
         if (patcher.getError() == KernelPatcher::Error::NoError) {
             DBGLOG("HBFX @ routed _IOHibernateSystemSleep");
         } else {
@@ -227,72 +286,72 @@ void HBFX::processKernel(KernelPatcher &patcher)
     } else {
         SYSLOG("HBFX @ failed to resolve _IOHibernateSystemSleep");
     }
+
+    method_address = patcher.solveSymbol(KernelPatcher::KernelID, "_ml_at_interrupt_context");
+    if (method_address) {
+        DBGLOG("HBFX @ obtained _ml_at_interrupt_context");
+        ml_at_interrupt_context = reinterpret_cast<t_ml_at_interrupt_context>(method_address);
+    } else {
+        SYSLOG("HBFX @ failed to resolve _ml_at_interrupt_context");
+    }
+    
+    method_address = patcher.solveSymbol(KernelPatcher::KernelID, "_ml_get_interrupts_enabled");
+    if (method_address) {
+        DBGLOG("HBFX @ obtained _ml_get_interrupts_enabled");
+        ml_get_interrupts_enabled = reinterpret_cast<t_ml_get_interrupts_enabled>(method_address);
+    } else {
+        SYSLOG("HBFX @ failed to resolve _ml_get_interrupts_enabled");
+    }
+    
+    method_address = patcher.solveSymbol(KernelPatcher::KernelID, "_ml_set_interrupts_enabled");
+    if (method_address) {
+        DBGLOG("HBFX @ obtained _ml_set_interrupts_enabled");
+        ml_set_interrupts_enabled = reinterpret_cast<t_ml_set_interrupts_enabled>(method_address);
+    } else {
+        SYSLOG("HBFX @ failed to resolve _ml_set_interrupts_enabled");
+    }
     
     if (config.dumpNvram)
     {
-        sessionCallback = patcher.solveSymbol(KernelPatcher::KernelID, "_sync");
-        if (sessionCallback) {
+        method_address = patcher.solveSymbol(KernelPatcher::KernelID, "_sync");
+        if (method_address) {
             DBGLOG("HBFX @ obtained _sync");
-            sync = reinterpret_cast<t_sync>(sessionCallback);
+            sync = reinterpret_cast<t_sync>(method_address);
         } else {
             SYSLOG("HBFX @ failed to resolve _sync");
         }
         
-        sessionCallback = patcher.solveSymbol(KernelPatcher::KernelID, "_preemption_enabled");
-        if (sessionCallback) {
+        method_address = patcher.solveSymbol(KernelPatcher::KernelID, "_preemption_enabled");
+        if (method_address) {
             DBGLOG("HBFX @ obtained _preemption_enabled");
-            preemption_enabled = reinterpret_cast<t_preemption_enabled>(sessionCallback);
+            preemption_enabled = reinterpret_cast<t_preemption_enabled>(method_address);
         } else {
             SYSLOG("HBFX @ failed to resolve _preemption_enabled");
         }
         
-        sessionCallback = patcher.solveSymbol(KernelPatcher::KernelID, "__enable_preemption");
-        if (sessionCallback) {
+        method_address = patcher.solveSymbol(KernelPatcher::KernelID, "__enable_preemption");
+        if (method_address) {
             DBGLOG("HBFX @ obtained __enable_preemption");
-            enable_preemption = reinterpret_cast<t_enable_preemption>(sessionCallback);
+            enable_preemption = reinterpret_cast<t_enable_preemption>(method_address);
         } else {
             SYSLOG("HBFX @ failed to resolve __enable_preemption");
         }
         
-        sessionCallback = patcher.solveSymbol(KernelPatcher::KernelID, "__disable_preemption");
-        if (sessionCallback) {
+        method_address = patcher.solveSymbol(KernelPatcher::KernelID, "__disable_preemption");
+        if (method_address) {
             DBGLOG("HBFX @ obtained __disable_preemption");
-            disable_preemption = reinterpret_cast<t_disable_preemption>(sessionCallback);
+            disable_preemption = reinterpret_cast<t_disable_preemption>(method_address);
         } else {
             SYSLOG("HBFX @ failed to resolve __disable_preemption");
-        }
-        
-        sessionCallback = patcher.solveSymbol(KernelPatcher::KernelID, "_ml_at_interrupt_context");
-        if (sessionCallback) {
-            DBGLOG("HBFX @ obtained _ml_at_interrupt_context");
-            ml_at_interrupt_context = reinterpret_cast<t_ml_at_interrupt_context>(sessionCallback);
-        } else {
-            SYSLOG("HBFX @ failed to resolve _ml_at_interrupt_context");
-        }
-        
-        sessionCallback = patcher.solveSymbol(KernelPatcher::KernelID, "_ml_get_interrupts_enabled");
-        if (sessionCallback) {
-            DBGLOG("HBFX @ obtained _ml_get_interrupts_enabled");
-            ml_get_interrupts_enabled = reinterpret_cast<t_ml_get_interrupts_enabled>(sessionCallback);
-        } else {
-            SYSLOG("HBFX @ failed to resolve _ml_get_interrupts_enabled");
-        }
-        
-        sessionCallback = patcher.solveSymbol(KernelPatcher::KernelID, "_ml_set_interrupts_enabled");
-        if (sessionCallback) {
-            DBGLOG("HBFX @ obtained _ml_set_interrupts_enabled");
-            ml_set_interrupts_enabled = reinterpret_cast<t_ml_set_interrupts_enabled>(sessionCallback);
-        } else {
-            SYSLOG("HBFX @ failed to resolve _ml_set_interrupts_enabled");
         }
         
         if (sync && preemption_enabled && enable_preemption && disable_preemption && ml_at_interrupt_context &&
             ml_get_interrupts_enabled && ml_set_interrupts_enabled)
         {
-            sessionCallback = patcher.solveSymbol(KernelPatcher::KernelID, "_packA");
-            if (sessionCallback) {
+            method_address = patcher.solveSymbol(KernelPatcher::KernelID, "_packA");
+            if (method_address) {
                 DBGLOG("HBFX @ obtained _packA");
-                orgPackA = reinterpret_cast<t_pack_a>(patcher.routeFunction(sessionCallback, reinterpret_cast<mach_vm_address_t>(packA), true));
+                orgPackA = reinterpret_cast<t_pack_a>(patcher.routeFunction(method_address, reinterpret_cast<mach_vm_address_t>(packA), true));
                 if (patcher.getError() == KernelPatcher::Error::NoError) {
                     DBGLOG("HBFX @ routed _packA");
                 } else {
@@ -306,7 +365,92 @@ void HBFX::processKernel(KernelPatcher &patcher)
     
     // Ignore all the errors for other processors
     patcher.clearError();
+
 }
+
+//==============================================================================
+
+uint8_t *mem_uint8(const void *bigptr, uint8_t ch, size_t length)
+{
+    const uint8_t *big = (const uint8_t *)bigptr;
+    size_t n;
+    for (n = 0; n < length; n++)
+        if (big[n] == ch)
+            return const_cast<uint8_t*>(&big[n]);
+    return nullptr;
+}
+
+//==============================================================================
+
+uint8_t *HBFX::findCallInstructionInMemory(mach_vm_address_t memory, size_t mem_size, mach_vm_address_t called_method)
+{
+    uint8_t *curr = reinterpret_cast<uint8_t *>(memory);
+    uint8_t *off  = curr + mem_size;
+    
+    while (curr < off)
+    {
+        curr = reinterpret_cast<uint8_t *>(mem_uint8(curr, 0xE8, off - curr));
+        if (!curr)
+        {
+            DBGLOG("HBFX @ findCallInstructionInMemory found no calls");
+            break;
+        }
+        
+        size_t isize = disasm.instructionSize(reinterpret_cast<mach_vm_address_t>(curr), 2);
+        if (isize == 0)
+        {
+            DBGLOG("HBFX @ disasm returned zero size insruction");
+            return nullptr;
+        }
+        
+        mach_vm_address_t diff = (called_method - reinterpret_cast<mach_vm_address_t>(curr + isize));
+        if (!memcmp(curr+1, &diff, isize-1))
+            return curr;
+        
+        curr += isize;
+    }
+    
+    return nullptr;
+}
+
+//==============================================================================
+
+void HBFX::processKext(KernelPatcher &patcher, size_t index, mach_vm_address_t address, size_t size)
+{
+    if (progressState != ProcessingState::EverythingDone) {
+        if (!(progressState & ProcessingState::IOPCIFamilyTouted) && getKernelVersion() >= KernelVersion::Sierra) {
+            for (size_t i = 0; i < kextListSize; i++) {
+                if (kextList[i].loadIndex == index && !strcmp(kextList[i].id, "com.apple.iokit.IOPCIFamily")) {
+                    io_pci_family_load_index = index;
+                    auto restoreMachine = patcher.solveSymbol(index, "__ZN11IOPCIBridge19restoreMachineStateEjP11IOPCIDevice");
+                    auto extendedConfigWrite = patcher.solveSymbol(index, "__ZN11IOPCIDevice21extendedConfigWrite16Eyt");
+                    if (restoreMachine && extendedConfigWrite) {
+                        extended_config_write16 = findCallInstructionInMemory(restoreMachine, 1024, extendedConfigWrite);
+                        if (extended_config_write16) {
+                            DBGLOG("HBFX @ findCallInstructionInMemory found call of __ZN11IOPCIDevice21extendedConfigWrite16Eyt");
+                            instruction_size = disasm.instructionSize(reinterpret_cast<mach_vm_address_t>(extended_config_write16), 2);
+                            memcpy(original_code, extended_config_write16, instruction_size);
+                            progressState |= ProcessingState::IOPCIFamilyTouted;
+                        }
+                        else {
+                            SYSLOG("HBFX @ failed to find call of __ZN11IOPCIDevice21extendedConfigWrite16Eyt");
+                        }
+                    } else {
+                        SYSLOG("HBFX @ failed to resolve __ZN11IOPCIBridge19restoreMachineStateEjP11IOPCIDevice");
+                    }
+                }
+            }
+        }
+    
+        if (!(progressState & ProcessingState::KernelRouted))
+        {
+            processKernel(patcher);
+            progressState |= ProcessingState::KernelRouted;
+        }
+    }
+}
+
+
 
 //==============================================================================
 
