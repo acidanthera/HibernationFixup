@@ -30,11 +30,12 @@ Configuration config;
 
 
 void Configuration::readArguments() {
-    char tmp[16];
+    char tmp[20];
     if (PE_parse_boot_argn(bootargDumpNvram, tmp, sizeof(tmp)))
         dumpNvram = true;
     
-    PE_parse_boot_argn(bootargHfile, hfilepath, sizeof(hfilepath));
+    if (PE_parse_boot_argn(bootargPatchPCI, tmp, sizeof(tmp)))
+        patchPCIFamily = true;
 }
 
 
