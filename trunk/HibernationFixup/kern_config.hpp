@@ -18,8 +18,8 @@ public:
     static const char *bootargDebug[];
     static const char *bootargBeta[];
     static constexpr const char *bootargDumpNvram {"-hbfx-dump-nvram"}; // write NVRAM to file
-    static constexpr const char *bootargHfile {"hfile"};    // hibernate file
-		
+    static constexpr const char *bootargPatchPCI {"-hbfx-patch-pci"};   // patch pci family
+    
 public:
 	/**
 	 *  Retrieve boot arguments
@@ -29,14 +29,15 @@ public:
 	void readArguments();
 	
 	/**
-	 *  Disable the extension by default
+	 *  dump nvram to /nvram.plist
 	 */
     bool dumpNvram {false};
     
+    
     /**
-     *  Hibernation file path
+     *  patch PCI Family
      */
-    char hfilepath[MAXPATHLEN+1] = {};
+    bool patchPCIFamily {false};
 	
 	
 #ifdef DEBUG

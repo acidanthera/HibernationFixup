@@ -57,35 +57,39 @@ static size_t kextListSize {1};
 
 bool HBFX::init()
 {
-    if (!disasm.init()) {
-        DBGLOG("HBFX @ failed to use disasm");
-        return false;
+    if (config.patchPCIFamily)
+    {
+        if (!disasm.init()) {
+            SYSLOG("HBFX @ failed to use disasm");
+            return false;
+        }
+        
+        LiluAPI::Error error = lilu.onKextLoad(kextList, kextListSize,
+                                               [](void *user, KernelPatcher &patcher, size_t index, mach_vm_address_t address, size_t size) {
+                                                   callbackHBFX = static_cast<HBFX *>(user);
+                                                   callbackPatcher = &patcher;
+                                                   callbackHBFX->processKext(patcher, index, address, size);
+                                               }, this);
+        
+        if (error != LiluAPI::Error::NoError) {
+            SYSLOG("HBFX @ failed to register onKextLoad method %d", error);
+            return false;
+        }
     }
-    
-    LiluAPI::Error error = lilu.onKextLoad(kextList, kextListSize,
-                                           [](void *user, KernelPatcher &patcher, size_t index, mach_vm_address_t address, size_t size) {
-                                               callbackHBFX = static_cast<HBFX *>(user);
-                                               callbackPatcher = &patcher;
-                                               callbackHBFX->processKext(patcher, index, address, size);
-                                           }, this);
-    
-    if (error != LiluAPI::Error::NoError) {
-        SYSLOG("HBFX @ failed to register onKextLoad method %d", error);
-        return false;
+    else
+    {
+        LiluAPI::Error error = lilu.onPatcherLoad(
+                                                  [](void *user, KernelPatcher &patcher) {
+                                                      callbackHBFX = static_cast<HBFX *>(user);
+                                                      callbackPatcher = &patcher;
+                                                      callbackHBFX->processKernel(patcher);
+                                                  }, this);
+        
+        if (error != LiluAPI::Error::NoError) {
+            SYSLOG("HBFX @ failed to register onPatcherLoad method %d", error);
+            return false;
+        }
     }
-
-//    LiluAPI::Error error = lilu.onPatcherLoad(
-//                                              [](void *user, KernelPatcher &patcher) {
-//                                                  callbackHBFX = static_cast<HBFX *>(user);
-//                                                  callbackPatcher = &patcher;
-//                                                  callbackHBFX->processKernel(patcher);
-//                                              }, this);
-//
-//
-//    if (error != LiluAPI::Error::NoError) {
-//        SYSLOG("HBFX @ failed to register onPatcherLoad method %d", error);
-//        return false;
-//    }
     
     gIOHibernateRTCVariablesKey = OSSymbol::withCStringNoCopy(kIOHibernateRTCVariablesKey);
     gIOHibernateSMCVariables    = OSSymbol::withCStringNoCopy(kIOHibernateSMCVariablesKey);
@@ -102,8 +106,11 @@ bool HBFX::init()
 
 void HBFX::deinit()
 {
-    // Deinitialise disassembler
-    disasm.deinit();
+    if (config.patchPCIFamily)
+    {
+        // Deinitialise disassembler
+        disasm.deinit();
+    }
 }
 
 //==============================================================================
@@ -389,7 +396,7 @@ uint8_t *HBFX::findCallInstructionInMemory(mach_vm_address_t memory, size_t mem_
     
     while (curr < off)
     {
-        curr = reinterpret_cast<uint8_t *>(mem_uint8(curr, 0xE8, off - curr));
+        curr = mem_uint8(curr, 0xE8, off - curr);
         if (!curr)
         {
             DBGLOG("HBFX @ findCallInstructionInMemory found no calls");
@@ -456,15 +463,13 @@ void HBFX::processKext(KernelPatcher &patcher, size_t index, mach_vm_address_t a
 
 bool HBFX::writeNvramToFile()
 {
-    char filepath[] = {FILE_NVRAM_NAME};
-    
     //serialize and write this out
     OSSerialize *s = OSSerialize::withCapacity(80000);
     s->addString(NVRAM_FILE_HEADER);
     dtNvram->serializeProperties(s);
     s->addString(NVRAM_FILE_FOOTER);
 
-    int error = FileIO::writeBufferToFile(filepath, s->text(), strlen(s->text()));
+    int error = FileIO::writeBufferToFile(FILE_NVRAM_NAME, s->text(), strlen(s->text()));
     
     //now free the dictionaries && iter
     s->release();
