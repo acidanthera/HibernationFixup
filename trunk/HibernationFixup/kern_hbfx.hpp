@@ -55,6 +55,11 @@ private:
 	using t_io_hibernate_system_sleep_callback = IOReturn (*)(void);
     
     /**
+     *  hibernate_write_image callback type
+     */
+    using t_hibernate_write_image = uint32_t (*)(void);
+    
+    /**
      *  packA callback type
      */
     using t_pack_a = UInt32 (*) (char *inbuf, uint32_t length, uint32_t buflen);
@@ -69,6 +74,7 @@ private:
 	 *  Hooked methods / callbacks
 	 */
     static IOReturn     IOHibernateSystemSleep(void);
+    static uint32_t     hibernate_write_image(void);
     static int          packA(char *inbuf, uint32_t length, uint32_t buflen);
     static void         unpackA(char *inbuf, uint32_t length);
     
@@ -76,10 +82,9 @@ private:
 	 *  Trampolines for original method invocations
 	 */
     t_io_hibernate_system_sleep_callback    orgIOHibernateSystemSleep {nullptr};
+    t_hibernate_write_image                 orgHibernateWriteImage {nullptr};
     t_pack_a                                orgPackA {nullptr};
     t_unpack_a                              orgUnpackA {nullptr};
-    
-    size_t io_pci_family_load_index {0};
     
     /**
      *  Write NVRAM to file
@@ -87,6 +92,10 @@ private:
     bool writeNvramToFile();
     
     uint8_t *findCallInstructionInMemory(mach_vm_address_t memory, size_t mem_size, mach_vm_address_t called_method);
+    
+    bool patchIOPCIFamily();
+    bool restoreIOPCIFamily();
+    bool isIOPCIFamilyPatched();
     
     /**
      *  Sync file buffers
