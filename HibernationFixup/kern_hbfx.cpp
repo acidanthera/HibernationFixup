@@ -42,7 +42,6 @@ enum
     kIOHibernateStateWakingFromHibernate = 2	/* booted and restored image */
 };
 
-
 static const char *kextIOPCIFamilyPath[] { "/System/Library/Extensions/IOPCIFamily.kext/IOPCIFamily" };
 
 static KernelPatcher::KextInfo kextList[] {
@@ -115,6 +114,58 @@ void HBFX::deinit()
 
 //==============================================================================
 
+bool HBFX::patchIOPCIFamily()
+{
+    bool result = false;
+    if (extended_config_write16)
+    {
+        bool interrupts_enabled = ml_get_interrupts_enabled();
+        if (MachInfo::setKernelWriting(true) == KERN_SUCCESS)
+        {
+            memset(extended_config_write16, 0x90, instruction_size);
+            DBGLOG("HBFX::restoreMachineState is patched");
+            MachInfo::setKernelWriting(false);
+            result = true;
+        }
+        else
+            SYSLOG("MachInfo::setKernelWriting failed");
+        ml_set_interrupts_enabled(interrupts_enabled);
+    }
+    
+    return result;
+}
+
+//==============================================================================
+
+bool HBFX::restoreIOPCIFamily()
+{
+    bool result = false;
+    if (extended_config_write16)
+    {
+        bool interrupts_enabled = ml_get_interrupts_enabled();
+        if (MachInfo::setKernelWriting(true) == KERN_SUCCESS)
+        {
+            memcpy(extended_config_write16, original_code, instruction_size);
+            DBGLOG("HBFX::restoreMachineState is restored");
+            MachInfo::setKernelWriting(false);
+        }
+        else
+            SYSLOG("MachInfo::setKernelWriting failed");
+        ml_set_interrupts_enabled(interrupts_enabled);
+    }
+    
+    return result;
+}
+
+//==============================================================================
+
+bool HBFX::isIOPCIFamilyPatched()
+{
+    return (extended_config_write16 && memcmp(extended_config_write16, original_code, instruction_size));
+}
+
+//==============================================================================
+
 IOReturn HBFX::IOHibernateSystemSleep(void) {
     
     IOReturn result = KERN_SUCCESS;
@@ -123,9 +174,7 @@ IOReturn HBFX::IOHibernateSystemSleep(void) {
     {
         result = callbackHBFX->orgIOHibernateSystemSleep();
         DBGLOG("HBFX @ IOHibernateSystemSleep is called, result is: %x", result);
-        
-        bool interrupts_enabled = callbackHBFX->ml_get_interrupts_enabled();
-        
+
         uint32_t ioHibernateState = kIOHibernateStateInactive;
         OSData *data = OSDynamicCast(OSData, IOService::getPMRootDomain()->getProperty(kIOHibernateStateKey));
         if (data != nullptr)
@@ -184,31 +233,12 @@ IOReturn HBFX::IOHibernateSystemSleep(void) {
                 callbackHBFX->dtNvram->removeProperty(gBootNextKey);
             }
             
-            if (callbackHBFX->extended_config_write16)
-            {
-                if (MachInfo::setKernelWriting(true) == KERN_SUCCESS)
-                {
-                    memset(callbackHBFX->extended_config_write16, 0x90, callbackHBFX->instruction_size);
-                    DBGLOG("HBFX::restoreMachineState is patched");
-                    MachInfo::setKernelWriting(false);
-                }
-                else
-                    SYSLOG("MachInfo::setKernelWriting failed");
-                callbackHBFX->ml_set_interrupts_enabled(interrupts_enabled);
-            }
+            if (config.patchPCIFamily)
+                callbackHBFX->patchIOPCIFamily();
         }
-        else if (callbackHBFX->extended_config_write16 &&
-                 memcmp(callbackHBFX->extended_config_write16, callbackHBFX->original_code, callbackHBFX->instruction_size))
+        else if (config.patchPCIFamily && callbackHBFX->isIOPCIFamilyPatched())
         {
-            if (MachInfo::setKernelWriting(true) == KERN_SUCCESS)
-            {
-                memcpy(callbackHBFX->extended_config_write16, callbackHBFX->original_code, callbackHBFX->instruction_size);
-                DBGLOG("HBFX::restoreMachineState is restored");
-                MachInfo::setKernelWriting(false);
-            }
-            else
-                SYSLOG("MachInfo::setKernelWriting failed");
-            callbackHBFX->ml_set_interrupts_enabled(interrupts_enabled);
+            callbackHBFX->restoreIOPCIFamily();
         }
     }
     else {
@@ -217,6 +247,70 @@ IOReturn HBFX::IOHibernateSystemSleep(void) {
 
     return result;
 }
+
+//==============================================================================
+
+//uint32_t HBFX::hibernate_write_image(void)
+//{
+//    uint32_t result = 0;
+//    
+//    if (callbackHBFX && callbackHBFX->orgHibernateWriteImage && callbackHBFX->dtNvram)
+//    {
+//        result = callbackHBFX->orgHibernateWriteImage();
+//        
+//        OSData *rtc = OSDynamicCast(OSData, IOService::getPMRootDomain()->getProperty(gIOHibernateRTCVariablesKey));
+//        if (rtc)
+//        {
+//            if (!callbackHBFX->dtNvram->setProperty(gIOHibernateRTCVariablesKey, rtc))
+//                SYSLOG("HBFX @ IOHibernateRTCVariablesKey can't be written to NVRAM.");
+//            callbackHBFX->dtNvram->sync();
+//            callbackHBFX->dtNvram->syncOFVariables();
+//        }
+//        
+//        // attempt to save a file in hibernate_write_image casues hangs
+//        if (config.dumpNvram && !callbackHBFX->ml_at_interrupt_context())
+//        {
+//            bool interrupts_enabled = callbackHBFX->ml_get_interrupts_enabled();
+//            
+//            if (OSData *data = OSDynamicCast(OSData, callbackHBFX->dtNvram->getProperty(gIOHibernateBoot0082Key)))
+//            {
+//                if (!callbackHBFX->dtNvram->setProperty(gBoot0082Key, data))
+//                    SYSLOG("HBFX @ Boot0082 can't be written!");
+//            }
+//            
+//            if (OSData *data = OSDynamicCast(OSData, callbackHBFX->dtNvram->getProperty(gIOHibernateBootNextKey)))
+//            {
+//                if (!callbackHBFX->dtNvram->setProperty(gBootNextKey, data))
+//                    SYSLOG("HBFX @ BootNext can't be written!");
+//            }
+//            
+//            callbackHBFX->ml_set_interrupts_enabled(TRUE);
+//            while (!callbackHBFX->preemption_enabled())
+//            {
+//                callbackHBFX->enable_preemption();
+//                if (!callbackHBFX->ml_get_interrupts_enabled())
+//                    callbackHBFX->ml_set_interrupts_enabled(TRUE);
+//            }
+//
+//            callbackHBFX->writeNvramToFile();
+//            
+//            if (callbackHBFX->sync)
+//                callbackHBFX->sync(kernproc, nullptr, nullptr);
+//        
+//            callbackHBFX->dtNvram->removeProperty(gBoot0082Key);
+//            callbackHBFX->dtNvram->removeProperty(gBootNextKey);
+//            
+//            callbackHBFX->dtNvram->sync();
+//            callbackHBFX->dtNvram->syncOFVariables();
+//            
+//            callbackHBFX->disable_preemption();
+//            callbackHBFX->ml_set_interrupts_enabled(interrupts_enabled);
+//        }
+//    }
+//    
+//    return result;
+//}
+
 
 //==============================================================================
 
@@ -294,6 +388,19 @@ void HBFX::processKernel(KernelPatcher &patcher)
         SYSLOG("HBFX @ failed to resolve _IOHibernateSystemSleep");
     }
 
+//    method_address = patcher.solveSymbol(KernelPatcher::KernelID, "_hibernate_write_image");
+//    if (method_address) {
+//        DBGLOG("HBFX @ obtained _hibernate_write_image");
+//        orgHibernateWriteImage = reinterpret_cast<t_hibernate_write_image>(patcher.routeFunction(method_address, reinterpret_cast<mach_vm_address_t>(hibernate_write_image), true));
+//        if (patcher.getError() == KernelPatcher::Error::NoError) {
+//            DBGLOG("HBFX @ routed _hibernate_write_image");
+//        } else {
+//            SYSLOG("HBFX @ failed to route _hibernate_write_image");
+//        }
+//    } else {
+//        SYSLOG("HBFX @ failed to resolve _hibernate_write_image");
+//    }
+    
     method_address = patcher.solveSymbol(KernelPatcher::KernelID, "_ml_at_interrupt_context");
     if (method_address) {
         DBGLOG("HBFX @ obtained _ml_at_interrupt_context");
@@ -428,7 +535,6 @@ void HBFX::processKext(KernelPatcher &patcher, size_t index, mach_vm_address_t a
         if (!(progressState & ProcessingState::IOPCIFamilyTouted) && getKernelVersion() >= KernelVersion::Sierra) {
             for (size_t i = 0; i < kextListSize; i++) {
                 if (kextList[i].loadIndex == index && !strcmp(kextList[i].id, "com.apple.iokit.IOPCIFamily")) {
-                    io_pci_family_load_index = index;
                     auto restoreMachine = patcher.solveSymbol(index, "__ZN11IOPCIBridge19restoreMachineStateEjP11IOPCIDevice");
                     auto extendedConfigWrite = patcher.solveSymbol(index, "__ZN11IOPCIDevice21extendedConfigWrite16Eyt");
                     if (restoreMachine && extendedConfigWrite) {
