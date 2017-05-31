@@ -18,3 +18,6 @@ HibernationFixup Changelog
 
 #### v1.1.4
 - Fix system freeze and black screen when resume after hibernation (Sierra only)
+
+#### v1.1.5
+- Added OSBundleCompatibleVersion
