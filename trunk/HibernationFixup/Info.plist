@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
 	<key>OSBundleCompatibleVersion</key>
-	<string>$(MODULE_VERSION:base).0</string>
+	<string>1.0</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleExecutable</key>
