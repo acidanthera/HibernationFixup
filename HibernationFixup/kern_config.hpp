@@ -1,8 +1,8 @@
 //
-//  kern_config_private.hpp
-//  Lilu
+//  kern_config.hpp
+//  HibernationFixup
 //
-//  Copyright © 2016-2017 vit9696. All rights reserved.
+//  Copyright © 2016-2017 lvs1974. All rights reserved.
 //
 
 #ifndef kern_config_private_h
