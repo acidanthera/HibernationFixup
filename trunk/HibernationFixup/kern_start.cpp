@@ -1,6 +1,6 @@
 //
 //  kern_start.cpp
-//  IntelGraphicsFixup
+//  HibernationFixup
 //
 //  Copyright © 2017 lvs1974. All rights reserved.
 //
