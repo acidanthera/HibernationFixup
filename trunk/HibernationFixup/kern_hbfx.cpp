@@ -323,35 +323,43 @@ int HBFX::packA(char *inbuf, uint32_t length, uint32_t buflen)
     
     if (callbackHBFX && !callbackHBFX->ml_at_interrupt_context())
     {
-        callbackHBFX->ml_set_interrupts_enabled(TRUE);
+        const bool interrupts_enabled = callbackHBFX->ml_get_interrupts_enabled();
+        if (!interrupts_enabled)
+            callbackHBFX->ml_set_interrupts_enabled(TRUE);
         if (callbackHBFX->ml_get_interrupts_enabled())
         {
-            while (!callbackHBFX->preemption_enabled())
+            int counter = 10;
+            const bool preemption_enabled = callbackHBFX->preemption_enabled();
+            while (!callbackHBFX->preemption_enabled() && --counter >= 0)
             {
                 callbackHBFX->enable_preemption();
-                if (!callbackHBFX->ml_get_interrupts_enabled())
-                    callbackHBFX->ml_set_interrupts_enabled(TRUE);
+                IOSleep(1);
             }
             
-            unsigned int pi_size = bufpos ? bufpos : length;
-            const unsigned int max_size = 768;
-            int counter = 0;
-            while (pi_size > 0)
+            if (callbackHBFX->preemption_enabled())
             {
-                unsigned int part_size = (pi_size > max_size) ? max_size : pi_size;
-                OSData *data = OSData::withBytes(inbuf, part_size);
-
-                snprintf(key, sizeof(key), "AAPL,PanicInfo%04d", counter++);
-                callbackHBFX->dtNvram->setProperty(OSSymbol::withCString(key), data);
-                pi_size -= part_size;
-                inbuf += part_size;
+                unsigned int pi_size = bufpos ? bufpos : length;
+                const unsigned int max_size = 768;
+                counter = 0;
+                while (pi_size > 0)
+                {
+                    unsigned int part_size = (pi_size > max_size) ? max_size : pi_size;
+                    OSData *data = OSData::withBytes(inbuf, part_size);
+                    
+                    snprintf(key, sizeof(key), "AAPL,PanicInfo%04d", counter++);
+                    callbackHBFX->dtNvram->setProperty(OSSymbol::withCString(key), data);
+                    pi_size -= part_size;
+                    inbuf += part_size;
+                }
+                
+                callbackHBFX->writeNvramToFile();
+                callbackHBFX->sync(kernproc, nullptr, nullptr);
             }
             
-            callbackHBFX->writeNvramToFile();
-            callbackHBFX->sync(kernproc, nullptr, nullptr);
-            
-            callbackHBFX->disable_preemption();
-            callbackHBFX->ml_set_interrupts_enabled(FALSE);
+            if (!preemption_enabled)
+                callbackHBFX->disable_preemption();
+            if (!interrupts_enabled)
+                callbackHBFX->ml_set_interrupts_enabled(FALSE);
         }
     }
     
