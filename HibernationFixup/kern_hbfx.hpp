@@ -9,6 +9,7 @@
 #define kern_hbfx_hpp
 
 #include <Headers/kern_patcher.hpp>
+#include <IOKit/IOService.h>
 
 #define kIOHibernateStateKey            "IOHibernateState"
 #define kIOHibernateRTCVariablesKey     "IOHibernateRTCVariables"
@@ -55,11 +56,6 @@ private:
 	using t_io_hibernate_system_sleep_callback = IOReturn (*)(void);
     
     /**
-     *  hibernate_write_image callback type
-     */
-    using t_hibernate_write_image = uint32_t (*)(void);
-    
-    /**
      *  packA callback type
      */
     using t_pack_a = UInt32 (*) (char *inbuf, uint32_t length, uint32_t buflen);
@@ -68,6 +64,16 @@ private:
      *  unpackA callback type
      */
     using t_unpack_a = UInt32 (*) (char *inbuf, uint32_t length);
+ 
+    /**
+     *  restoreMachineState callback type
+     */
+    using t_restore_machine_state = IOReturn (*) (IOService *that, IOOptionBits options, IOService * device);
+    
+    /**
+     *  extendedConfigWrite16 callback type
+     */
+    using t_extended_config_write16 = void (*) (IOService *that, UInt64 offset, UInt16 data);
     
     
 	/**
@@ -76,26 +82,22 @@ private:
     static IOReturn     IOHibernateSystemSleep(void);
     static uint32_t     hibernate_write_image(void);
     static int          packA(char *inbuf, uint32_t length, uint32_t buflen);
-    static void         unpackA(char *inbuf, uint32_t length);
+    static IOReturn     restoreMachineState(IOService *that, IOOptionBits options, IOService * device);
+    static void         extendedConfigWrite16(IOService *that, UInt64 offset, UInt16 data);
     
 	/**
 	 *  Trampolines for original method invocations
 	 */
     t_io_hibernate_system_sleep_callback    orgIOHibernateSystemSleep {nullptr};
-    t_hibernate_write_image                 orgHibernateWriteImage {nullptr};
     t_pack_a                                orgPackA {nullptr};
-    t_unpack_a                              orgUnpackA {nullptr};
+    t_restore_machine_state                 orgRestoreMachineState {nullptr};
+    t_extended_config_write16               orgExtendedConfigWrite16 {nullptr};
     
     /**
      *  Write NVRAM to file
      */
     bool writeNvramToFile();
-    
-    uint8_t *findCallInstructionInMemory(mach_vm_address_t memory, size_t mem_size, mach_vm_address_t called_method);
-    
-    bool patchIOPCIFamily();
-    bool restoreIOPCIFamily();
-    bool isIOPCIFamilyPatched();
+
     
     /**
      *  Sync file buffers
@@ -126,6 +128,7 @@ private:
     uint8_t *extended_config_write16 {nullptr};
     uint8_t original_code[128];
     size_t  instruction_size {0};
+    bool    disable_pci_config_command {false};
 
     
     /**
@@ -134,14 +137,12 @@ private:
     struct ProcessingState {
         enum {
             NothingReady = 0,
-            IOPCIFamilyTouted = 2,
+            IOPCIFamilyRouted = 2,
             KernelRouted = 4,
-            EverythingDone = IOPCIFamilyTouted | KernelRouted,
+            EverythingDone = IOPCIFamilyRouted | KernelRouted,
         };
     };
     int progressState {ProcessingState::NothingReady};
-    
-    Disassembler disasm;
 };
 
 #endif /* kern_hbfx_hpp */

@@ -21,3 +21,9 @@ HibernationFixup Changelog
 
 #### v1.1.5
 - Added OSBundleCompatibleVersion
+
+#### v1.1.6
+- Requires Lilu 1.1.6
+- Compatibility with High Sierra
+- PCI Family patch was improved
+- New boot-arg hbfx-patch-pci=[comma-separated list of ignored devices] supported
