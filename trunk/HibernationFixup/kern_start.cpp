@@ -35,7 +35,18 @@ void Configuration::readArguments() {
         dumpNvram = true;
     
     if (PE_parse_boot_argn(bootargPatchPCI, tmp, sizeof(tmp)))
+    {
         patchPCIFamily = true;
+        DBGLOG("HBFX @ boot-arg %s specified, turn on PCIFamily patching", bootargPatchPCI);
+    }
+    
+    if (PE_parse_boot_argn(bootargPatchPCIWithList, ignored_device_list, sizeof(ignored_device_list)))
+    {
+        patchPCIFamily = true;
+        DBGLOG("HBFX @ boot-arg %s specified, turn on PCIFamily patching", bootargPatchPCIWithList);
+    }
+    
+    DBGLOG("HBFX @ ignored device list=%s", ignored_device_list);
 }
 
 
@@ -50,7 +61,7 @@ PluginConfiguration ADDPR(config) {
 	config.bootargBeta,
 	sizeof(config.bootargBeta)/sizeof(config.bootargBeta[0]),
 	KernelVersion::MountainLion,
-	KernelVersion::Sierra,
+	KernelVersion::HighSierra,
 	[]() {
         config.readArguments();
 		hbfx.init();
