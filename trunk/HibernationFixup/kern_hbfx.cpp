@@ -321,10 +321,16 @@ void HBFX::processKernel(KernelPatcher &patcher)
             DBGLOG("HBFX @ IODTNVRAM object is aquired");
         }
         else
+        {
             SYSLOG("HBFX @ Registry entry /options can't be casted to IONVRAM.");
+            return;
+        }
     }
     else
+    {
         SYSLOG("HBFX @ Registry entry /options is not found.");
+        return;
+    }
 
     auto method_address = patcher.solveSymbol(KernelPatcher::KernelID, "_IOHibernateSystemSleep");
     if (method_address) {
@@ -417,7 +423,6 @@ void HBFX::processKernel(KernelPatcher &patcher)
     
     // Ignore all the errors for other processors
     patcher.clearError();
-
 }
 
 //==============================================================================
@@ -441,18 +446,23 @@ void HBFX::processKext(KernelPatcher &patcher, size_t index, mach_vm_address_t a
                         SYSLOG("HBFX @ failed to resolve __ZN11IOPCIBridge19restoreMachineStateEjP11IOPCIDevice");
                     }
                     
-                    method_address = patcher.solveSymbol(index, "__ZN11IOPCIDevice21extendedConfigWrite16Eyt");
-                    if (method_address) {
-                        DBGLOG("HBFX @ obtained __ZN11IOPCIDevice21extendedConfigWrite16Eyt");
-                        orgExtendedConfigWrite16 = reinterpret_cast<t_extended_config_write16>(patcher.routeFunction(method_address, reinterpret_cast<mach_vm_address_t>(extendedConfigWrite16), true));
-                        if (patcher.getError() == KernelPatcher::Error::NoError) {
-                            DBGLOG("HBFX @ routed __ZN11IOPCIDevice21extendedConfigWrite16Eyt");
+                    if (orgRestoreMachineState)
+                    {
+                        method_address = patcher.solveSymbol(index, "__ZN11IOPCIDevice21extendedConfigWrite16Eyt");
+                        if (method_address) {
+                            DBGLOG("HBFX @ obtained __ZN11IOPCIDevice21extendedConfigWrite16Eyt");
+                            orgExtendedConfigWrite16 = reinterpret_cast<t_extended_config_write16>(patcher.routeFunction(method_address, reinterpret_cast<mach_vm_address_t>(extendedConfigWrite16), true));
+                            if (patcher.getError() == KernelPatcher::Error::NoError) {
+                                DBGLOG("HBFX @ routed __ZN11IOPCIDevice21extendedConfigWrite16Eyt");
+                            } else {
+                                SYSLOG("HBFX @ failed to route __ZN11IOPCIDevice21extendedConfigWrite16Eyt");
+                            }
                         } else {
-                            SYSLOG("HBFX @ failed to route __ZN11IOPCIDevice21extendedConfigWrite16Eyt");
+                            SYSLOG("HBFX @ failed to resolve __ZN11IOPCIDevice21extendedConfigWrite16Eyt");
                         }
-                    } else {
-                        SYSLOG("HBFX @ failed to resolve __ZN11IOPCIDevice21extendedConfigWrite16Eyt");
                     }
+                    
+                    progressState |= ProcessingState::IOPCIFamilyRouted;
                 }
             }
         }
@@ -463,6 +473,9 @@ void HBFX::processKext(KernelPatcher &patcher, size_t index, mach_vm_address_t a
             progressState |= ProcessingState::KernelRouted;
         }
     }
+    
+    // Ignore all the errors for other processors
+    patcher.clearError();
 }
 
 
