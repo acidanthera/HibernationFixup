@@ -75,6 +75,16 @@ private:
      */
     using t_extended_config_write16 = void (*) (IOService *that, UInt64 offset, UInt16 data);
     
+    /**
+     *  IOPolledFilePollersSetup callback type
+     */
+    using t_iopolled_file_pollers_setup = IOReturn (*) (void * vars, uint32_t openState);
+    
+    /**
+     *  smcWriteKeyWithSMC callback type
+     */
+    using t_smc_write_key_with_smc = UInt8 (*) (void *that, uint32_t a2, int a3, int64_t a4, void *a5);
+    
     
 	/**
 	 *  Hooked methods / callbacks
@@ -84,6 +94,8 @@ private:
     static int          packA(char *inbuf, uint32_t length, uint32_t buflen);
     static IOReturn     restoreMachineState(IOService *that, IOOptionBits options, IOService * device);
     static void         extendedConfigWrite16(IOService *that, UInt64 offset, UInt16 data);
+    static IOReturn     IOPolledFilePollersSetup(void * vars, uint32_t openState);
+    static UInt8        smcWriteKeyWithSMC(void *that, uint32_t a2, int a3, int64_t a4, void *a5);
     
 	/**
 	 *  Trampolines for original method invocations
@@ -92,6 +104,8 @@ private:
     t_pack_a                                orgPackA {nullptr};
     t_restore_machine_state                 orgRestoreMachineState {nullptr};
     t_extended_config_write16               orgExtendedConfigWrite16 {nullptr};
+    t_iopolled_file_pollers_setup           orgIOPolledFilePollersSetup {nullptr};
+    t_smc_write_key_with_smc                orgSmcWriteKeyWithSMC {nullptr};
     
     /**
      *  Write NVRAM to file
@@ -100,7 +114,7 @@ private:
 
     
     /**
-     *  Sync file buffers
+     *  Sync file buffers & interrupts & preemption control
      */
     using t_sync = int (*) (__unused proc_t p, __unused struct sync_args *uap, __unused int32_t *retval);
     t_sync sync;
@@ -123,13 +137,14 @@ private:
     using t_ml_set_interrupts_enabled = boolean_t (*) (boolean_t enable);
     t_ml_set_interrupts_enabled ml_set_interrupts_enabled {nullptr};
     
+    using t_iopolled_file_pollers_open = IOReturn (*) (void * vars, uint32_t state, bool abortable);
+    t_iopolled_file_pollers_open IOPolledFilePollersOpen {nullptr};
+    
     IODTNVRAM *dtNvram {nullptr};
     
-    uint8_t *extended_config_write16 {nullptr};
-    uint8_t original_code[128];
-    size_t  instruction_size {0};
     bool    disable_pci_config_command {false};
-
+    bool    file_vars_valid {false};
+    uint8_t file_vars[1024] = {};
     
     /**
      *  Current progress mask
@@ -138,8 +153,9 @@ private:
         enum {
             NothingReady = 0,
             IOPCIFamilyRouted = 2,
-            KernelRouted = 4,
-            EverythingDone = IOPCIFamilyRouted | KernelRouted,
+            AppleSMCRouted = 4,
+            KernelRouted = 8,
+            EverythingDone = IOPCIFamilyRouted | AppleSMCRouted | KernelRouted,
         };
     };
     int progressState {ProcessingState::NothingReady};
