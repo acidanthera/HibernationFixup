@@ -587,8 +587,8 @@ void HBFX::processKext(KernelPatcher &patcher, size_t index, mach_vm_address_t a
                     
                     progressState |= ProcessingState::AppleSMCRouted;
                 }
-            }
 #endif
+            }
         }
     
         if (!(progressState & ProcessingState::KernelRouted))
