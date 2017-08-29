@@ -27,3 +27,7 @@ HibernationFixup Changelog
 - Compatibility with High Sierra
 - PCI Family patch was improved
 - New boot-arg hbfx-patch-pci=[comma-separated list of ignored devices] supported
+
+#### v1.1.7
+- Fixes for 1.1.6b (Release was non-working)
+- Use pollers to provoke writing of SMC-keys earlier

@@ -80,12 +80,7 @@ private:
      */
     using t_iopolled_file_pollers_setup = IOReturn (*) (void * vars, uint32_t openState);
     
-    /**
-     *  smcWriteKeyWithSMC callback type
-     */
-    using t_smc_write_key_with_smc = UInt8 (*) (void *that, uint32_t a2, int a3, int64_t a4, void *a5);
-    
-    
+
 	/**
 	 *  Hooked methods / callbacks
 	 */
@@ -95,7 +90,6 @@ private:
     static IOReturn     restoreMachineState(IOService *that, IOOptionBits options, IOService * device);
     static void         extendedConfigWrite16(IOService *that, UInt64 offset, UInt16 data);
     static IOReturn     IOPolledFilePollersSetup(void * vars, uint32_t openState);
-    static UInt8        smcWriteKeyWithSMC(void *that, uint32_t a2, int a3, int64_t a4, void *a5);
     
 	/**
 	 *  Trampolines for original method invocations
@@ -105,7 +99,6 @@ private:
     t_restore_machine_state                 orgRestoreMachineState {nullptr};
     t_extended_config_write16               orgExtendedConfigWrite16 {nullptr};
     t_iopolled_file_pollers_setup           orgIOPolledFilePollersSetup {nullptr};
-    t_smc_write_key_with_smc                orgSmcWriteKeyWithSMC {nullptr};
     
     /**
      *  Write NVRAM to file
@@ -153,9 +146,8 @@ private:
         enum {
             NothingReady = 0,
             IOPCIFamilyRouted = 2,
-            AppleSMCRouted = 4,
-            KernelRouted = 8,
-            EverythingDone = IOPCIFamilyRouted | AppleSMCRouted | KernelRouted,
+            KernelRouted = 4,
+            EverythingDone = IOPCIFamilyRouted | KernelRouted,
         };
     };
     int progressState {ProcessingState::NothingReady};
