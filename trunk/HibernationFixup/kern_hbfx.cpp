@@ -93,18 +93,12 @@ enum
 };
 
 static const char *kextIOPCIFamilyPath[] { "/System/Library/Extensions/IOPCIFamily.kext/IOPCIFamily" };
-static const char *kextAppleSMCPath[]    { "/System/Library/Extensions/AppleSMC.kext/Contents/MacOS/AppleSMC" };
 
 static KernelPatcher::KextInfo kextList[] {
-    { "com.apple.iokit.IOPCIFamily", kextIOPCIFamilyPath, 1, true, false, {}, KernelPatcher::KextInfo::Unloaded },
-    { "com.apple.driver.AppleSMC",   kextAppleSMCPath,    1, true, false, {}, KernelPatcher::KextInfo::Unloaded },
+    { "com.apple.iokit.IOPCIFamily", kextIOPCIFamilyPath, 1, true, false, {}, KernelPatcher::KextInfo::Unloaded }
 };
 
-#ifdef DEBUG
-static size_t kextListSize {2};
-#else
-static size_t kextListSize {1};
-#endif
+static const size_t kextListSize {1};
 
 
 //==============================================================================
@@ -362,33 +356,6 @@ IOReturn HBFX::IOPolledFilePollersSetup(void * vars, uint32_t openState)
 
 //==============================================================================
 
-UInt8 HBFX::smcWriteKeyWithSMC(void *that, uint32_t a2, int a3, int64_t a4, void *a5)
-{
-    UInt8 result = 0;
-    if (callbackHBFX && callbackHBFX->orgSmcWriteKeyWithSMC)
-    {
-        result = callbackHBFX->orgSmcWriteKeyWithSMC(that, a2, a3, a4, a5);
-        
-        char key[10] = {};
-        auto reverse_nibbles = [](uint32_t x) {
-            uint32_t out = 0, i;
-            for(i = 0; i < 4; ++i)
-            {
-                const uint32_t byte = (x >> 8 * i) & 0xff;
-                out |= byte << (24 - 8 * i);
-            }
-            return out;
-        };
-        
-        a2 = reverse_nibbles(a2);
-        memcpy(key, &a2, sizeof(a2));
-        DBGLOG("HBFX @ AppleSMC::smcWriteKeyWithSMC: key = '%s', a3 = 0x%08x, a4 = 0x%08llx", key, a3, a4);
-    }
-    return result;
-}
-
-//==============================================================================
-
 void HBFX::processKernel(KernelPatcher &patcher)
 {
     if (IORegistryEntry *options = OSDynamicCast(IORegistryEntry, IORegistryEntry::fromPath("/options", gIODTPlane)))
@@ -568,26 +535,6 @@ void HBFX::processKext(KernelPatcher &patcher, size_t index, mach_vm_address_t a
                     
                     progressState |= ProcessingState::IOPCIFamilyRouted;
                 }
-                
-#ifdef DEBUG
-                if (!(progressState & ProcessingState::AppleSMCRouted) && !strcmp(kextList[i].id, "com.apple.driver.AppleSMC"))
-                {
-                    auto method_address = patcher.solveSymbol(index, "__ZN8AppleSMC18smcWriteKeyWithSMCEjhyPv");
-                    if (method_address) {
-                        DBGLOG("HBFX @ obtained __ZN8AppleSMC18smcWriteKeyWithSMCEjhyPv");
-                        orgSmcWriteKeyWithSMC = reinterpret_cast<t_smc_write_key_with_smc>(patcher.routeFunction(method_address, reinterpret_cast<mach_vm_address_t>(smcWriteKeyWithSMC), true));
-                        if (patcher.getError() == KernelPatcher::Error::NoError) {
-                            DBGLOG("HBFX @ routed __ZN8AppleSMC18smcWriteKeyWithSMCEjhyPv");
-                        } else {
-                            SYSLOG("HBFX @ failed to route __ZN8AppleSMC18smcWriteKeyWithSMCEjhyPv");
-                        }
-                    } else {
-                        SYSLOG("HBFX @ failed to resolve __ZN8AppleSMC18smcWriteKeyWithSMCEjhyPv");
-                    }
-                    
-                    progressState |= ProcessingState::AppleSMCRouted;
-                }
-#endif
             }
         }
     
