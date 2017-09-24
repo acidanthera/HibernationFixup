@@ -55,7 +55,7 @@
 		<key>com.apple.kpi.unsupported</key>
 		<string>12.0.0</string>
 		<key>as.vit9696.Lilu</key>
-		<string>1.1.6</string>
+		<string>1.2.0</string>
 	</dict>
 	<key>OSBundleRequired</key>
 	<string>Root</string>

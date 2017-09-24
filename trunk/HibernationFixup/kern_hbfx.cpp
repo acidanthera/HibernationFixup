@@ -7,6 +7,7 @@
 
 #include <Headers/kern_api.hpp>
 #include <Headers/kern_file.hpp>
+#include <Headers/kern_compat.hpp>
 
 #include "kern_config.hpp"
 #include "kern_hbfx.hpp"
@@ -95,7 +96,7 @@ enum
 static const char *kextIOPCIFamilyPath[] { "/System/Library/Extensions/IOPCIFamily.kext/IOPCIFamily" };
 
 static KernelPatcher::KextInfo kextList[] {
-    { "com.apple.iokit.IOPCIFamily", kextIOPCIFamilyPath, 1, true, false, {}, KernelPatcher::KextInfo::Unloaded }
+    { "com.apple.iokit.IOPCIFamily", kextIOPCIFamilyPath, 1, {true, false}, {}, KernelPatcher::KextInfo::Unloaded }
 };
 
 static const size_t kextListSize {1};
@@ -115,7 +116,7 @@ bool HBFX::init()
                                                }, this);
         
         if (error != LiluAPI::Error::NoError) {
-            SYSLOG("HBFX @ failed to register onKextLoad method %d", error);
+            SYSLOG("HBFX", "failed to register onKextLoad method %d", error);
             return false;
         }
     }
@@ -129,7 +130,7 @@ bool HBFX::init()
                                                   }, this);
         
         if (error != LiluAPI::Error::NoError) {
-            SYSLOG("HBFX @ failed to register onPatcherLoad method %d", error);
+            SYSLOG("HBFX", "failed to register onPatcherLoad method %d", error);
             return false;
         }
     }
@@ -161,14 +162,14 @@ IOReturn HBFX::IOHibernateSystemSleep(void)
     {
         callbackHBFX->file_vars_valid = false;
         result = callbackHBFX->orgIOHibernateSystemSleep();
-        DBGLOG("HBFX @ IOHibernateSystemSleep is called, result is: %x", result);
+        DBGLOG("HBFX", "IOHibernateSystemSleep is called, result is: %x", result);
 
         uint32_t ioHibernateState = kIOHibernateStateInactive;
         OSData *data = OSDynamicCast(OSData, IOService::getPMRootDomain()->getProperty(kIOHibernateStateKey));
         if (data != nullptr)
         {
             ioHibernateState = *((uint32_t *)data->getBytesNoCopy());
-            DBGLOG("HBFX @ Current hibernate state from IOPMRootDomain is: %d", ioHibernateState);
+            DBGLOG("HBFX", "Current hibernate state from IOPMRootDomain is: %d", ioHibernateState);
         }
         
         if (result == KERN_SUCCESS || ioHibernateState == kIOHibernateStateHibernating)
@@ -177,25 +178,25 @@ IOReturn HBFX::IOHibernateSystemSleep(void)
             {
                 IOReturn open_result = callbackHBFX->IOPolledFilePollersOpen(callbackHBFX->file_vars, kIOPolledBeforeSleepState, true);
                 if (open_result != KERN_SUCCESS)
-                    SYSLOG("HBFX @ IOPolledFilePollersOpen returned error %d", open_result);
+                    SYSLOG("HBFX", "IOPolledFilePollersOpen returned error %d", open_result);
                 else
-                    DBGLOG("HBFX @ IOPolledFilePollersOpen returned success");
+                    DBGLOG("HBFX", "IOPolledFilePollersOpen returned success");
             }
             
             OSData *rtc = OSDynamicCast(OSData, IOService::getPMRootDomain()->getProperty(gIOHibernateRTCVariablesKey));
             if (rtc && !callbackHBFX->dtNvram->getProperty(gIOHibernateRTCVariablesKey))
             {
                 if (!callbackHBFX->dtNvram->setProperty(gIOHibernateRTCVariablesKey, rtc))
-                    SYSLOG("HBFX @ IOHibernateRTCVariablesKey can't be written to NVRAM.");
+                    SYSLOG("HBFX", "IOHibernateRTCVariablesKey can't be written to NVRAM.");
                 else
                 {
-                    SYSLOG("HBFX @ IOHibernateRTCVariablesKey has been written to NVRAM.");
+                    SYSLOG("HBFX", "IOHibernateRTCVariablesKey has been written to NVRAM.");
         
                     // we should remove fakesmc-key-HBKP-ch8* if it exists
                     if (callbackHBFX->dtNvram->getProperty(gFakeSMCHBKP))
                     {
                         callbackHBFX->dtNvram->removeProperty(gFakeSMCHBKP);
-                        SYSLOG("HBFX @ fakesmc-key-HBKP-ch8* has been removed from NVRAM.");
+                        SYSLOG("HBFX", "fakesmc-key-HBKP-ch8* has been removed from NVRAM.");
                     }
                 }
             }
@@ -204,7 +205,7 @@ IOReturn HBFX::IOHibernateSystemSleep(void)
             if (smc && !callbackHBFX->dtNvram->getProperty(gIOHibernateSMCVariables))
             {
                 if (!callbackHBFX->dtNvram->setProperty(gIOHibernateSMCVariables, smc))
-                    SYSLOG("HBFX @ IOHibernateSMCVariablesKey can't be written to NVRAM.");
+                    SYSLOG("HBFX", "IOHibernateSMCVariablesKey can't be written to NVRAM.");
             }
             
             if (config.dumpNvram)
@@ -212,14 +213,18 @@ IOReturn HBFX::IOHibernateSystemSleep(void)
                 if (OSData *data = OSDynamicCast(OSData, callbackHBFX->dtNvram->getProperty(gIOHibernateBoot0082Key)))
                 {
                     if (!callbackHBFX->dtNvram->setProperty(gBoot0082Key, data))
-                        SYSLOG("HBFX @ Boot0082 can't be written!");
+                        SYSLOG("HBFX", "Boot0082 can't be written!");
                 }
+                else
+                    SYSLOG("HBFX", "Variable Boot0082 can't be found!");
                 
                 if (OSData *data = OSDynamicCast(OSData, callbackHBFX->dtNvram->getProperty(gIOHibernateBootNextKey)))
                 {
                     if (!callbackHBFX->dtNvram->setProperty(gBootNextKey, data))
-                        SYSLOG("HBFX @ BootNext can't be written!");
+                        SYSLOG("HBFX", "BootNext can't be written!");
                 }
+                else
+                    SYSLOG("HBFX", "Variable BootNext can't be found!");
                 
                 callbackHBFX->writeNvramToFile();
                 
@@ -232,7 +237,7 @@ IOReturn HBFX::IOHibernateSystemSleep(void)
         }
     }
     else {
-        SYSLOG("HBFX @ callback arrived at nowhere");
+        SYSLOG("HBFX", "callback arrived at nowhere");
     }
 
     return result;
@@ -321,7 +326,7 @@ void HBFX::extendedConfigWrite16(IOService *that, UInt64 offset, UInt16 data)
         {
             if (strlen(config.ignored_device_list) == 0 || strstr(config.ignored_device_list, that->getName()) != nullptr)
             {
-                DBGLOG("HBFX @ extendedConfigWrite16 won't be called for device %s", that->getName());
+                DBGLOG("HBFX", "extendedConfigWrite16 won't be called for device %s", that->getName());
                 return;
             }
         }
@@ -344,8 +349,8 @@ IOReturn HBFX::IOPolledFilePollersSetup(void * vars, uint32_t openState)
             callbackHBFX->file_vars_valid = (result == KERN_SUCCESS);
             if (callbackHBFX->file_vars_valid)
             {
-                DBGLOG("HBFX @ IOPolledFilePollersSetup called with state kIOPolledPreflightState");
-                memcpy(callbackHBFX->file_vars, vars, sizeof(callbackHBFX->file_vars));
+                DBGLOG("HBFX", "IOPolledFilePollersSetup called with state kIOPolledPreflightState");
+                lilu_os_memcpy(callbackHBFX->file_vars, vars, sizeof(callbackHBFX->file_vars));
                 callbackHBFX->file_vars_valid = true;
             }
         }
@@ -363,89 +368,89 @@ void HBFX::processKernel(KernelPatcher &patcher)
         if (IODTNVRAM *nvram = OSDynamicCast(IODTNVRAM, options))
         {
             dtNvram = nvram;
-            DBGLOG("HBFX @ IODTNVRAM object is aquired");
+            DBGLOG("HBFX", "IODTNVRAM object is aquired");
         }
         else
         {
-            SYSLOG("HBFX @ Registry entry /options can't be casted to IONVRAM.");
+            SYSLOG("HBFX", "Registry entry /options can't be casted to IONVRAM.");
             return;
         }
     }
     else
     {
-        SYSLOG("HBFX @ Registry entry /options is not found.");
+        SYSLOG("HBFX", "Registry entry /options is not found.");
         return;
     }
 
     auto method_address = patcher.solveSymbol(KernelPatcher::KernelID, "_IOHibernateSystemSleep");
     if (method_address) {
-        DBGLOG("HBFX @ obtained _IOHibernateSystemSleep");
+        DBGLOG("HBFX", "obtained _IOHibernateSystemSleep");
         orgIOHibernateSystemSleep = reinterpret_cast<t_io_hibernate_system_sleep_callback>(patcher.routeFunction(method_address, reinterpret_cast<mach_vm_address_t>(IOHibernateSystemSleep), true));
         if (patcher.getError() == KernelPatcher::Error::NoError) {
-            DBGLOG("HBFX @ routed _IOHibernateSystemSleep");
+            DBGLOG("HBFX", "routed _IOHibernateSystemSleep");
         } else {
-            SYSLOG("HBFX @ failed to route _IOHibernateSystemSleep");
+            SYSLOG("HBFX", "failed to route _IOHibernateSystemSleep");
         }
     } else {
-        SYSLOG("HBFX @ failed to resolve _IOHibernateSystemSleep");
+        SYSLOG("HBFX", "failed to resolve _IOHibernateSystemSleep");
     }
     
     method_address = patcher.solveSymbol(KernelPatcher::KernelID, "_ml_at_interrupt_context");
     if (method_address) {
-        DBGLOG("HBFX @ obtained _ml_at_interrupt_context");
+        DBGLOG("HBFX", "obtained _ml_at_interrupt_context");
         ml_at_interrupt_context = reinterpret_cast<t_ml_at_interrupt_context>(method_address);
     } else {
-        SYSLOG("HBFX @ failed to resolve _ml_at_interrupt_context");
+        SYSLOG("HBFX", "failed to resolve _ml_at_interrupt_context");
     }
     
     method_address = patcher.solveSymbol(KernelPatcher::KernelID, "_ml_get_interrupts_enabled");
     if (method_address) {
-        DBGLOG("HBFX @ obtained _ml_get_interrupts_enabled");
+        DBGLOG("HBFX", "obtained _ml_get_interrupts_enabled");
         ml_get_interrupts_enabled = reinterpret_cast<t_ml_get_interrupts_enabled>(method_address);
     } else {
-        SYSLOG("HBFX @ failed to resolve _ml_get_interrupts_enabled");
+        SYSLOG("HBFX", "failed to resolve _ml_get_interrupts_enabled");
     }
     
     method_address = patcher.solveSymbol(KernelPatcher::KernelID, "_ml_set_interrupts_enabled");
     if (method_address) {
-        DBGLOG("HBFX @ obtained _ml_set_interrupts_enabled");
+        DBGLOG("HBFX", "obtained _ml_set_interrupts_enabled");
         ml_set_interrupts_enabled = reinterpret_cast<t_ml_set_interrupts_enabled>(method_address);
     } else {
-        SYSLOG("HBFX @ failed to resolve _ml_set_interrupts_enabled");
+        SYSLOG("HBFX", "failed to resolve _ml_set_interrupts_enabled");
     }
     
     if (config.dumpNvram)
     {
         method_address = patcher.solveSymbol(KernelPatcher::KernelID, "_sync");
         if (method_address) {
-            DBGLOG("HBFX @ obtained _sync");
+            DBGLOG("HBFX", "obtained _sync");
             sync = reinterpret_cast<t_sync>(method_address);
         } else {
-            SYSLOG("HBFX @ failed to resolve _sync");
+            SYSLOG("HBFX", "failed to resolve _sync");
         }
         
         method_address = patcher.solveSymbol(KernelPatcher::KernelID, "_preemption_enabled");
         if (method_address) {
-            DBGLOG("HBFX @ obtained _preemption_enabled");
+            DBGLOG("HBFX", "obtained _preemption_enabled");
             preemption_enabled = reinterpret_cast<t_preemption_enabled>(method_address);
         } else {
-            SYSLOG("HBFX @ failed to resolve _preemption_enabled");
+            SYSLOG("HBFX", "failed to resolve _preemption_enabled");
         }
         
         method_address = patcher.solveSymbol(KernelPatcher::KernelID, "__enable_preemption");
         if (method_address) {
-            DBGLOG("HBFX @ obtained __enable_preemption");
+            DBGLOG("HBFX", "obtained __enable_preemption");
             enable_preemption = reinterpret_cast<t_enable_preemption>(method_address);
         } else {
-            SYSLOG("HBFX @ failed to resolve __enable_preemption");
+            SYSLOG("HBFX", "failed to resolve __enable_preemption");
         }
         
         method_address = patcher.solveSymbol(KernelPatcher::KernelID, "__disable_preemption");
         if (method_address) {
-            DBGLOG("HBFX @ obtained __disable_preemption");
+            DBGLOG("HBFX", "obtained __disable_preemption");
             disable_preemption = reinterpret_cast<t_disable_preemption>(method_address);
         } else {
-            SYSLOG("HBFX @ failed to resolve __disable_preemption");
+            SYSLOG("HBFX", "failed to resolve __disable_preemption");
         }
         
         if (sync && preemption_enabled && enable_preemption && disable_preemption && ml_at_interrupt_context &&
@@ -453,38 +458,38 @@ void HBFX::processKernel(KernelPatcher &patcher)
         {
             method_address = patcher.solveSymbol(KernelPatcher::KernelID, "_packA");
             if (method_address) {
-                DBGLOG("HBFX @ obtained _packA");
+                DBGLOG("HBFX", "obtained _packA");
                 orgPackA = reinterpret_cast<t_pack_a>(patcher.routeFunction(method_address, reinterpret_cast<mach_vm_address_t>(packA), true));
                 if (patcher.getError() == KernelPatcher::Error::NoError) {
-                    DBGLOG("HBFX @ routed _packA");
+                    DBGLOG("HBFX", "routed _packA");
                 } else {
-                    SYSLOG("HBFX @ failed to route _packA");
+                    SYSLOG("HBFX", "failed to route _packA");
                 }
             } else {
-                SYSLOG("HBFX @ failed to resolve _packA");
+                SYSLOG("HBFX", "failed to resolve _packA");
             }
         }
     }
     
     method_address = patcher.solveSymbol(KernelPatcher::KernelID, "__Z24IOPolledFilePollersSetupP18IOPolledFileIOVarsj");
     if (method_address) {
-        DBGLOG("HBFX @ obtained __Z24IOPolledFilePollersSetupP18IOPolledFileIOVarsj");
+        DBGLOG("HBFX", "obtained __Z24IOPolledFilePollersSetupP18IOPolledFileIOVarsj");
         orgIOPolledFilePollersSetup = reinterpret_cast<t_iopolled_file_pollers_setup>(patcher.routeFunction(method_address, reinterpret_cast<mach_vm_address_t>(IOPolledFilePollersSetup), true));
         if (patcher.getError() == KernelPatcher::Error::NoError) {
-            DBGLOG("HBFX @ routed __Z24IOPolledFilePollersSetupP18IOPolledFileIOVarsj");
+            DBGLOG("HBFX", "routed __Z24IOPolledFilePollersSetupP18IOPolledFileIOVarsj");
         } else {
-            SYSLOG("HBFX @ failed to route __Z24IOPolledFilePollersSetupP18IOPolledFileIOVarsj");
+            SYSLOG("HBFX", "failed to route __Z24IOPolledFilePollersSetupP18IOPolledFileIOVarsj");
         }
     } else {
-        SYSLOG("HBFX @ failed to resolve __Z24IOPolledFilePollersSetupP18IOPolledFileIOVarsj");
+        SYSLOG("HBFX", "failed to resolve __Z24IOPolledFilePollersSetupP18IOPolledFileIOVarsj");
     }
     
     method_address = patcher.solveSymbol(KernelPatcher::KernelID, "_IOPolledFilePollersOpen");
     if (method_address) {
-        DBGLOG("HBFX @ obtained _IOPolledFilePollersOpen");
+        DBGLOG("HBFX", "obtained _IOPolledFilePollersOpen");
         IOPolledFilePollersOpen = reinterpret_cast<t_iopolled_file_pollers_open>(method_address);
     } else {
-        SYSLOG("HBFX @ failed to resolve _IOPolledFilePollersOpen");
+        SYSLOG("HBFX", "failed to resolve _IOPolledFilePollersOpen");
     }
     
     
@@ -506,30 +511,30 @@ void HBFX::processKext(KernelPatcher &patcher, size_t index, mach_vm_address_t a
                 {
                     auto method_address = patcher.solveSymbol(index, "__ZN11IOPCIBridge19restoreMachineStateEjP11IOPCIDevice");
                     if (method_address) {
-                        DBGLOG("HBFX @ obtained __ZN11IOPCIBridge19restoreMachineStateEjP11IOPCIDevice");
+                        DBGLOG("HBFX", "obtained __ZN11IOPCIBridge19restoreMachineStateEjP11IOPCIDevice");
                         orgRestoreMachineState = reinterpret_cast<t_restore_machine_state>(patcher.routeFunction(method_address, reinterpret_cast<mach_vm_address_t>(restoreMachineState), true));
                         if (patcher.getError() == KernelPatcher::Error::NoError) {
-                            DBGLOG("HBFX @ routed __ZN11IOPCIBridge19restoreMachineStateEjP11IOPCIDevice");
+                            DBGLOG("HBFX", "routed __ZN11IOPCIBridge19restoreMachineStateEjP11IOPCIDevice");
                         } else {
-                            SYSLOG("HBFX @ failed to route __ZN11IOPCIBridge19restoreMachineStateEjP11IOPCIDevice");
+                            SYSLOG("HBFX", "failed to route __ZN11IOPCIBridge19restoreMachineStateEjP11IOPCIDevice");
                         }
                     } else {
-                        SYSLOG("HBFX @ failed to resolve __ZN11IOPCIBridge19restoreMachineStateEjP11IOPCIDevice");
+                        SYSLOG("HBFX", "failed to resolve __ZN11IOPCIBridge19restoreMachineStateEjP11IOPCIDevice");
                     }
                     
                     if (orgRestoreMachineState)
                     {
                         method_address = patcher.solveSymbol(index, "__ZN11IOPCIDevice21extendedConfigWrite16Eyt");
                         if (method_address) {
-                            DBGLOG("HBFX @ obtained __ZN11IOPCIDevice21extendedConfigWrite16Eyt");
+                            DBGLOG("HBFX", "obtained __ZN11IOPCIDevice21extendedConfigWrite16Eyt");
                             orgExtendedConfigWrite16 = reinterpret_cast<t_extended_config_write16>(patcher.routeFunction(method_address, reinterpret_cast<mach_vm_address_t>(extendedConfigWrite16), true));
                             if (patcher.getError() == KernelPatcher::Error::NoError) {
-                                DBGLOG("HBFX @ routed __ZN11IOPCIDevice21extendedConfigWrite16Eyt");
+                                DBGLOG("HBFX", "routed __ZN11IOPCIDevice21extendedConfigWrite16Eyt");
                             } else {
-                                SYSLOG("HBFX @ failed to route __ZN11IOPCIDevice21extendedConfigWrite16Eyt");
+                                SYSLOG("HBFX", "failed to route __ZN11IOPCIDevice21extendedConfigWrite16Eyt");
                             }
                         } else {
-                            SYSLOG("HBFX @ failed to resolve __ZN11IOPCIDevice21extendedConfigWrite16Eyt");
+                            SYSLOG("HBFX", "failed to resolve __ZN11IOPCIDevice21extendedConfigWrite16Eyt");
                         }
                     }
                     
