@@ -9,23 +9,20 @@
 #define kern_hbfx_hpp
 
 #include <Headers/kern_patcher.hpp>
-#include <IOKit/IOService.h>
+#include <Headers/kern_nvram.hpp>
 
 #define kIOHibernateStateKey            "IOHibernateState"
 #define kIOHibernateRTCVariablesKey     "IOHibernateRTCVariables"
 #define kIOHibernateSMCVariablesKey     "IOHibernateSMCVariables"
 #define kFakeSMCHBKB                    "fakesmc-key-HBKP-ch8*"
 #define kIOHibernateFileKey             "Hibernate File"
+#define kBoot0082Key                    "Boot0082"
+#define kBootNextKey                    "BootNext"
+#define kGlobalBoot0082Key              NVRAM_PREFIX(NVRAM_GLOBAL_GUID, kBoot0082Key)
+#define kGlobalBootNextKey              NVRAM_PREFIX(NVRAM_GLOBAL_GUID, kBootNextKey)
+
 
 #define FILE_NVRAM_NAME                 "/nvram.plist"
-
-#define NVRAM_FILE_HEADER               "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" \
-                                        "<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n"\
-                                        "<plist version=\"1.0\">\n"
-#define NVRAM_FILE_FOOTER               "\n</plist>\n"
-
-
-class IODTNVRAM;
 
 class HBFX {
 public:
@@ -49,6 +46,12 @@ private:
      *  @param size    kinfo memory size
      */
     void processKext(KernelPatcher &patcher, size_t index, mach_vm_address_t address, size_t size);
+    
+    /**
+     *  Initialize NVStorage
+     *
+     */
+    bool initialize_nvstorage();
     
 	/**
 	 *  IOHibernateSystemSleep callback type
@@ -99,11 +102,6 @@ private:
     t_restore_machine_state                 orgRestoreMachineState {nullptr};
     t_extended_config_write16               orgExtendedConfigWrite16 {nullptr};
     t_iopolled_file_pollers_setup           orgIOPolledFilePollersSetup {nullptr};
-    
-    /**
-     *  Write NVRAM to file
-     */
-    bool writeNvramToFile();
 
     
     /**
@@ -133,8 +131,6 @@ private:
     using t_iopolled_file_pollers_open = IOReturn (*) (void * vars, uint32_t state, bool abortable);
     t_iopolled_file_pollers_open IOPolledFilePollersOpen {nullptr};
     
-    IODTNVRAM *dtNvram {nullptr};
-    
     bool    disable_pci_config_command {false};
     bool    file_vars_valid {false};
     uint8_t file_vars[1024] = {};
@@ -151,6 +147,8 @@ private:
         };
     };
     int progressState {ProcessingState::NothingReady};
+    
+    NVStorage nvstorage;
 };
 
 #endif /* kern_hbfx_hpp */
