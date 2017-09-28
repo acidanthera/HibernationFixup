@@ -542,52 +542,21 @@ bool HBFX::initialize_nvstorage()
                                0x01, 0x02, 0x03, 0x04, 0xFF, 0x04, 0x03, 0x02, 0x01};
             
             uint8_t enckey[] = {0xFF, 0x10, 0x08, 0x04, 0x02, 0x05, 0x09};
-            uint32_t size;
-            uint32_t dstlen = 1024;
-            uint8_t *buf;
+            uint32_t size = 0, dstlen = 1024;
+            uint8_t *buf, *compressed_data, *decompressed_data;
             
-            SYSLOG("HBFX", "compress test 1");
-            uint8_t *compressed_data = Compression::compress(Compression::ModeLZSS, dstlen, value, sizeof(value), nullptr);
-            if (compressed_data)
-            {
-                SYSLOG("HBFX", "compressed size = %u", dstlen);
-                uint8_t *decompressed_data = Compression::decompress(Compression::ModeLZSS, sizeof(value), compressed_data, dstlen);
-                if (decompressed_data)
-                {
-                    SYSLOG("HBFX", "decompressed size = %lu", sizeof(value));
-                    if (memcmp(decompressed_data, value, sizeof(value)) != 0)
-                        SYSLOG("HBFX", "decompress failed - data");
-                    Buffer::deleter(decompressed_data);
-                }
-                else
-                    SYSLOG("HBFX", "decompress failed - nullptr");
-                Buffer::deleter(compressed_data);
-            }
-            else
-                SYSLOG("HBFX", "compress failed");
+            PANIC_COND((compressed_data = Compression::compress(Compression::ModeLZSS, dstlen, value, sizeof(value), nullptr)) == nullptr, "HBFX", "Compression::compress failed");
+            PANIC_COND((decompressed_data = Compression::decompress(Compression::ModeLZSS, sizeof(value), compressed_data, dstlen)) == nullptr, "HBFX", "Compression::decompress failed");
+            PANIC_COND(memcmp(decompressed_data, value, sizeof(value)) != 0, "HBFX", "memory is different from original");
+            Buffer::deleter(decompressed_data);
+            Buffer::deleter(compressed_data);
             
-            SYSLOG("HBFX", "compress test 2");
             dstlen = sizeof(value);
-            compressed_data = nvstorage.compress(value, dstlen);
-            if (compressed_data)
-            {
-                SYSLOG("HBFX", "compressed size = %u", dstlen);
-                uint8_t *decompressed_data = nvstorage.decompress(compressed_data, dstlen);
-                if (decompressed_data)
-                {
-                    SYSLOG("HBFX", "decompressed size = %u", dstlen);
-                    if (memcmp(decompressed_data, value, sizeof(value)) != 0)
-                        SYSLOG("HBFX", "decompress failed - data");
-                    Buffer::deleter(decompressed_data);
-                }
-                else
-                    SYSLOG("HBFX", "decompress failed - nullptr");
-                Buffer::deleter(compressed_data);
-            }
-            else
-                SYSLOG("HBFX", "compress failed");
-            
-            SYSLOG("HBFX", "compress test 3");
+            PANIC_COND((compressed_data = nvstorage.compress(value, dstlen)) == nullptr, "HBFX", "NVStorage.compress failed");
+            PANIC_COND((decompressed_data = nvstorage.decompress(compressed_data, dstlen)) == nullptr, "HBFX", "NVStorage.decompress failed");
+            PANIC_COND(memcmp(decompressed_data, value, sizeof(value)) != 0, "HBFX", "memory is different from original");
+            Buffer::deleter(decompressed_data);
+            Buffer::deleter(compressed_data);
             
             const char* key = "NVStorageTestVar1";
             PANIC_COND(!nvstorage.write(key, value, sizeof(value), NVStorage::OptChecksum, enckey), "HBFX", "write failed for %s", key);
