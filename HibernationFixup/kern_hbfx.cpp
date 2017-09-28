@@ -5,19 +5,16 @@
 //  Copyright © 2017 lvs1974. All rights reserved.
 //
 
+#include <IOKit/pwr_mgt/RootDomain.h>
+
 #include <Headers/kern_api.hpp>
 #include <Headers/kern_file.hpp>
 #include <Headers/kern_compat.hpp>
+#include <Headers/kern_compression.hpp>
 
 #include "kern_config.hpp"
 #include "kern_hbfx.hpp"
 
-#include <IOKit/IORegistryEntry.h>
-#include <IOKit/IOReportTypes.h>
-
-#include <IOKit/pwr_mgt/RootDomain.h>
-#include <IOKit/IODeviceTreeSupport.h>
-#include <IOKit/IONVRAM.h>
 
 
 
@@ -26,11 +23,8 @@ static HBFX *callbackHBFX = nullptr;
 static KernelPatcher *callbackPatcher = nullptr;
 static const OSSymbol *gIOHibernateRTCVariablesKey = nullptr;
 static const OSSymbol *gIOHibernateSMCVariables = nullptr;
-static const OSSymbol *gIOHibernateBoot0082Key = nullptr;
-static const OSSymbol *gIOHibernateBootNextKey = nullptr;
-static const OSSymbol *gBoot0082Key  = nullptr;
-static const OSSymbol *gBootNextKey  = nullptr;
-static const OSSymbol *gFakeSMCHBKP  = nullptr;
+
+
 
 extern proc_t kernproc;
 
@@ -106,43 +100,21 @@ static const size_t kextListSize {1};
 
 bool HBFX::init()
 {
-    if (config.patchPCIFamily)
-    {
-        LiluAPI::Error error = lilu.onKextLoad(kextList, kextListSize,
-                                               [](void *user, KernelPatcher &patcher, size_t index, mach_vm_address_t address, size_t size) {
-                                                   callbackHBFX = static_cast<HBFX *>(user);
-                                                   callbackPatcher = &patcher;
-                                                   callbackHBFX->processKext(patcher, index, address, size);
-                                               }, this);
-        
-        if (error != LiluAPI::Error::NoError) {
-            SYSLOG("HBFX", "failed to register onKextLoad method %d", error);
-            return false;
-        }
-    }
-    else
-    {
-        LiluAPI::Error error = lilu.onPatcherLoad(
-                                                  [](void *user, KernelPatcher &patcher) {
-                                                      callbackHBFX = static_cast<HBFX *>(user);
-                                                      callbackPatcher = &patcher;
-                                                      callbackHBFX->processKernel(patcher);
-                                                  }, this);
-        
-        if (error != LiluAPI::Error::NoError) {
-            SYSLOG("HBFX", "failed to register onPatcherLoad method %d", error);
-            return false;
-        }
-    }
-    
     gIOHibernateRTCVariablesKey = OSSymbol::withCStringNoCopy(kIOHibernateRTCVariablesKey);
     gIOHibernateSMCVariables    = OSSymbol::withCStringNoCopy(kIOHibernateSMCVariablesKey);
-    gIOHibernateBoot0082Key     = OSSymbol::withCString("8BE4DF61-93CA-11D2-AA0D-00E098032B8C:Boot0082");
-    gIOHibernateBootNextKey     = OSSymbol::withCString("8BE4DF61-93CA-11D2-AA0D-00E098032B8C:BootNext");
-    gBoot0082Key                = OSSymbol::withCString("Boot0082");
-    gBootNextKey                = OSSymbol::withCString("BootNext");
-    gFakeSMCHBKP                = OSSymbol::withCStringNoCopy(kFakeSMCHBKB);
     
+    LiluAPI::Error error = lilu.onKextLoad(kextList, kextListSize,
+                                           [](void *user, KernelPatcher &patcher, size_t index, mach_vm_address_t address, size_t size) {
+                                               callbackHBFX = static_cast<HBFX *>(user);
+                                               callbackPatcher = &patcher;
+                                               callbackHBFX->processKext(patcher, index, address, size);
+                                           }, this);
+    
+    if (error != LiluAPI::Error::NoError) {
+        SYSLOG("HBFX", "failed to register onKextLoad method %d", error);
+        return false;
+    }
+
 	return true;
 }
 
@@ -150,6 +122,7 @@ bool HBFX::init()
 
 void HBFX::deinit()
 {
+    nvstorage.deinit();
 }
 
 //==============================================================================
@@ -158,7 +131,7 @@ IOReturn HBFX::IOHibernateSystemSleep(void)
 {
     IOReturn result = KERN_SUCCESS;
     
-    if (callbackHBFX && callbackHBFX->orgIOHibernateSystemSleep && callbackHBFX->dtNvram)
+    if (callbackHBFX && callbackHBFX->orgIOHibernateSystemSleep)
     {
         callbackHBFX->file_vars_valid = false;
         result = callbackHBFX->orgIOHibernateSystemSleep();
@@ -184,55 +157,60 @@ IOReturn HBFX::IOHibernateSystemSleep(void)
             }
             
             OSData *rtc = OSDynamicCast(OSData, IOService::getPMRootDomain()->getProperty(gIOHibernateRTCVariablesKey));
-            if (rtc && !callbackHBFX->dtNvram->getProperty(gIOHibernateRTCVariablesKey))
+            if (rtc && !callbackHBFX->nvstorage.exists(kIOHibernateRTCVariablesKey))
             {
-                if (!callbackHBFX->dtNvram->setProperty(gIOHibernateRTCVariablesKey, rtc))
+                if (!callbackHBFX->nvstorage.write(kIOHibernateRTCVariablesKey,
+                                                   reinterpret_cast<const uint8_t*>(rtc->getBytesNoCopy()), rtc->getLength(), NVStorage::OptRaw))
                     SYSLOG("HBFX", "IOHibernateRTCVariablesKey can't be written to NVRAM.");
                 else
                 {
                     SYSLOG("HBFX", "IOHibernateRTCVariablesKey has been written to NVRAM.");
-        
+                    
                     // we should remove fakesmc-key-HBKP-ch8* if it exists
-                    if (callbackHBFX->dtNvram->getProperty(gFakeSMCHBKP))
+                    if (callbackHBFX->nvstorage.exists(kFakeSMCHBKB))
                     {
-                        callbackHBFX->dtNvram->removeProperty(gFakeSMCHBKP);
+                        callbackHBFX->nvstorage.remove(kFakeSMCHBKB);
                         SYSLOG("HBFX", "fakesmc-key-HBKP-ch8* has been removed from NVRAM.");
                     }
                 }
             }
             
             OSData *smc = OSDynamicCast(OSData, IOService::getPMRootDomain()->getProperty(gIOHibernateSMCVariables));
-            if (smc && !callbackHBFX->dtNvram->getProperty(gIOHibernateSMCVariables))
+            if (smc && !callbackHBFX->nvstorage.exists(kIOHibernateSMCVariablesKey))
             {
-                if (!callbackHBFX->dtNvram->setProperty(gIOHibernateSMCVariables, smc))
+                if (!callbackHBFX->nvstorage.write(kIOHibernateSMCVariablesKey,
+                                                   reinterpret_cast<const uint8_t*>(smc->getBytesNoCopy()), smc->getLength(), NVStorage::OptRaw))
                     SYSLOG("HBFX", "IOHibernateSMCVariablesKey can't be written to NVRAM.");
             }
             
             if (config.dumpNvram)
             {
-                if (OSData *data = OSDynamicCast(OSData, callbackHBFX->dtNvram->getProperty(gIOHibernateBoot0082Key)))
+                uint32_t size;
+                if (uint8_t *buf = callbackHBFX->nvstorage.read(kGlobalBoot0082Key, size, NVStorage::OptRaw))
                 {
-                    if (!callbackHBFX->dtNvram->setProperty(gBoot0082Key, data))
-                        SYSLOG("HBFX", "Boot0082 can't be written!");
+                    if (!callbackHBFX->nvstorage.write(kBoot0082Key, buf, size, NVStorage::OptRaw))
+                        SYSLOG("HBFX", "%s can't be written!", kBoot0082Key);
+                    Buffer::deleter(buf);
                 }
                 else
-                    SYSLOG("HBFX", "Variable Boot0082 can't be found!");
+                    SYSLOG("HBFX", "Variable %s can't be found!", kBoot0082Key);
                 
-                if (OSData *data = OSDynamicCast(OSData, callbackHBFX->dtNvram->getProperty(gIOHibernateBootNextKey)))
+                if (uint8_t *buf = callbackHBFX->nvstorage.read(kGlobalBootNextKey, size, NVStorage::OptRaw))
                 {
-                    if (!callbackHBFX->dtNvram->setProperty(gBootNextKey, data))
-                        SYSLOG("HBFX", "BootNext can't be written!");
+                    if (!callbackHBFX->nvstorage.write(kBootNextKey, buf, size, NVStorage::OptRaw))
+                        SYSLOG("HBFX", "%s can't be written!", kBootNextKey);
+                    Buffer::deleter(buf);
                 }
                 else
-                    SYSLOG("HBFX", "Variable BootNext can't be found!");
+                    SYSLOG("HBFX", "Variable %s can't be found!", kBootNextKey);
                 
-                callbackHBFX->writeNvramToFile();
+                callbackHBFX->nvstorage.save(FILE_NVRAM_NAME);
                 
                 if (callbackHBFX->sync)
                     callbackHBFX->sync(kernproc, nullptr, nullptr);
                 
-                callbackHBFX->dtNvram->removeProperty(gBoot0082Key);
-                callbackHBFX->dtNvram->removeProperty(gBootNextKey);
+                callbackHBFX->nvstorage.remove(kBoot0082Key);
+                callbackHBFX->nvstorage.remove(kBootNextKey);
             }
         }
     }
@@ -275,15 +253,13 @@ int HBFX::packA(char *inbuf, uint32_t length, uint32_t buflen)
                 while (pi_size > 0)
                 {
                     unsigned int part_size = (pi_size > max_size) ? max_size : pi_size;
-                    OSData *data = OSData::withBytes(inbuf, part_size);
-                    
                     snprintf(key, sizeof(key), "AAPL,PanicInfo%04d", counter++);
-                    callbackHBFX->dtNvram->setProperty(OSSymbol::withCString(key), data);
+                    callbackHBFX->nvstorage.write(key, reinterpret_cast<const uint8_t*>(inbuf), part_size);
                     pi_size -= part_size;
                     inbuf += part_size;
                 }
                 
-                callbackHBFX->writeNvramToFile();
+                callbackHBFX->nvstorage.save(FILE_NVRAM_NAME);
                 callbackHBFX->sync(kernproc, nullptr, nullptr);
             }
             
@@ -363,25 +339,9 @@ IOReturn HBFX::IOPolledFilePollersSetup(void * vars, uint32_t openState)
 
 void HBFX::processKernel(KernelPatcher &patcher)
 {
-    if (IORegistryEntry *options = OSDynamicCast(IORegistryEntry, IORegistryEntry::fromPath("/options", gIODTPlane)))
-    {
-        if (IODTNVRAM *nvram = OSDynamicCast(IODTNVRAM, options))
-        {
-            dtNvram = nvram;
-            DBGLOG("HBFX", "IODTNVRAM object is aquired");
-        }
-        else
-        {
-            SYSLOG("HBFX", "Registry entry /options can't be casted to IONVRAM.");
-            return;
-        }
-    }
-    else
-    {
-        SYSLOG("HBFX", "Registry entry /options is not found.");
+    if (!initialize_nvstorage())
         return;
-    }
-
+    
     auto method_address = patcher.solveSymbol(KernelPatcher::KernelID, "_IOHibernateSystemSleep");
     if (method_address) {
         DBGLOG("HBFX", "obtained _IOHibernateSystemSleep");
@@ -501,44 +461,53 @@ void HBFX::processKernel(KernelPatcher &patcher)
 
 void HBFX::processKext(KernelPatcher &patcher, size_t index, mach_vm_address_t address, size_t size)
 {
+    if (!initialize_nvstorage())
+        return;
+    
+    if (nvstorage.exists("EmuVariableUefiPresent"))
+        config.dumpNvram = true;
+    
     if (progressState != ProcessingState::EverythingDone)
     {
-        for (size_t i = 0; i < kextListSize; i++)
+        if (config.patchPCIFamily)
         {
-            if (kextList[i].loadIndex == index)
+            for (size_t i = 0; i < kextListSize; i++)
             {
-                if (!(progressState & ProcessingState::IOPCIFamilyRouted) && !strcmp(kextList[i].id, "com.apple.iokit.IOPCIFamily"))
+                if (kextList[i].loadIndex == index)
                 {
-                    auto method_address = patcher.solveSymbol(index, "__ZN11IOPCIBridge19restoreMachineStateEjP11IOPCIDevice");
-                    if (method_address) {
-                        DBGLOG("HBFX", "obtained __ZN11IOPCIBridge19restoreMachineStateEjP11IOPCIDevice");
-                        orgRestoreMachineState = reinterpret_cast<t_restore_machine_state>(patcher.routeFunction(method_address, reinterpret_cast<mach_vm_address_t>(restoreMachineState), true));
-                        if (patcher.getError() == KernelPatcher::Error::NoError) {
-                            DBGLOG("HBFX", "routed __ZN11IOPCIBridge19restoreMachineStateEjP11IOPCIDevice");
-                        } else {
-                            SYSLOG("HBFX", "failed to route __ZN11IOPCIBridge19restoreMachineStateEjP11IOPCIDevice");
-                        }
-                    } else {
-                        SYSLOG("HBFX", "failed to resolve __ZN11IOPCIBridge19restoreMachineStateEjP11IOPCIDevice");
-                    }
-                    
-                    if (orgRestoreMachineState)
+                    if (!(progressState & ProcessingState::IOPCIFamilyRouted) && !strcmp(kextList[i].id, "com.apple.iokit.IOPCIFamily"))
                     {
-                        method_address = patcher.solveSymbol(index, "__ZN11IOPCIDevice21extendedConfigWrite16Eyt");
+                        auto method_address = patcher.solveSymbol(index, "__ZN11IOPCIBridge19restoreMachineStateEjP11IOPCIDevice");
                         if (method_address) {
-                            DBGLOG("HBFX", "obtained __ZN11IOPCIDevice21extendedConfigWrite16Eyt");
-                            orgExtendedConfigWrite16 = reinterpret_cast<t_extended_config_write16>(patcher.routeFunction(method_address, reinterpret_cast<mach_vm_address_t>(extendedConfigWrite16), true));
+                            DBGLOG("HBFX", "obtained __ZN11IOPCIBridge19restoreMachineStateEjP11IOPCIDevice");
+                            orgRestoreMachineState = reinterpret_cast<t_restore_machine_state>(patcher.routeFunction(method_address, reinterpret_cast<mach_vm_address_t>(restoreMachineState), true));
                             if (patcher.getError() == KernelPatcher::Error::NoError) {
-                                DBGLOG("HBFX", "routed __ZN11IOPCIDevice21extendedConfigWrite16Eyt");
+                                DBGLOG("HBFX", "routed __ZN11IOPCIBridge19restoreMachineStateEjP11IOPCIDevice");
                             } else {
-                                SYSLOG("HBFX", "failed to route __ZN11IOPCIDevice21extendedConfigWrite16Eyt");
+                                SYSLOG("HBFX", "failed to route __ZN11IOPCIBridge19restoreMachineStateEjP11IOPCIDevice");
                             }
                         } else {
-                            SYSLOG("HBFX", "failed to resolve __ZN11IOPCIDevice21extendedConfigWrite16Eyt");
+                            SYSLOG("HBFX", "failed to resolve __ZN11IOPCIBridge19restoreMachineStateEjP11IOPCIDevice");
                         }
+                        
+                        if (orgRestoreMachineState)
+                        {
+                            method_address = patcher.solveSymbol(index, "__ZN11IOPCIDevice21extendedConfigWrite16Eyt");
+                            if (method_address) {
+                                DBGLOG("HBFX", "obtained __ZN11IOPCIDevice21extendedConfigWrite16Eyt");
+                                orgExtendedConfigWrite16 = reinterpret_cast<t_extended_config_write16>(patcher.routeFunction(method_address, reinterpret_cast<mach_vm_address_t>(extendedConfigWrite16), true));
+                                if (patcher.getError() == KernelPatcher::Error::NoError) {
+                                    DBGLOG("HBFX", "routed __ZN11IOPCIDevice21extendedConfigWrite16Eyt");
+                                } else {
+                                    SYSLOG("HBFX", "failed to route __ZN11IOPCIDevice21extendedConfigWrite16Eyt");
+                                }
+                            } else {
+                                SYSLOG("HBFX", "failed to resolve __ZN11IOPCIDevice21extendedConfigWrite16Eyt");
+                            }
+                        }
+                        
+                        progressState |= ProcessingState::IOPCIFamilyRouted;
                     }
-                    
-                    progressState |= ProcessingState::IOPCIFamilyRouted;
                 }
             }
         }
@@ -554,22 +523,135 @@ void HBFX::processKext(KernelPatcher &patcher, size_t index, mach_vm_address_t a
     patcher.clearError();
 }
 
-
-
 //==============================================================================
 
-bool HBFX::writeNvramToFile()
+bool HBFX::initialize_nvstorage()
 {
-    //serialize and write this out
-    OSSerialize *s = OSSerialize::withCapacity(80000);
-    s->addString(NVRAM_FILE_HEADER);
-    dtNvram->serializeProperties(s);
-    s->addString(NVRAM_FILE_FOOTER);
-
-    int error = FileIO::writeBufferToFile(FILE_NVRAM_NAME, s->text(), strlen(s->text()));
+    static bool nvstorage_initialized = false;
+    if (!nvstorage_initialized)
+    {
+        if (nvstorage.init())
+        {
+            nvstorage_initialized = true;
+            
+            // short NVStorage test
+            uint8_t value[] = {0x01, 0x02, 0x03, 0x04, 0xFF, 0x04, 0x03, 0x02, 0x01,
+                               0x01, 0x02, 0x03, 0x04, 0xFF, 0x04, 0x03, 0x02, 0x01,
+                               0x01, 0x02, 0x03, 0x04, 0xFF, 0x04, 0x03, 0x02, 0x01,
+                               0x01, 0x02, 0x03, 0x04, 0xFF, 0x04, 0x03, 0x02, 0x01,
+                               0x01, 0x02, 0x03, 0x04, 0xFF, 0x04, 0x03, 0x02, 0x01};
+            
+            uint8_t enckey[] = {0xFF, 0x10, 0x08, 0x04, 0x02, 0x05, 0x09};
+            uint32_t size;
+            uint32_t dstlen = 1024;
+            uint8_t *buf;
+            
+            SYSLOG("HBFX", "compress test 1");
+            uint8_t *compressed_data = Compression::compress(Compression::ModeLZSS, dstlen, value, sizeof(value), nullptr);
+            if (compressed_data)
+            {
+                SYSLOG("HBFX", "compressed size = %u", dstlen);
+                uint8_t *decompressed_data = Compression::decompress(Compression::ModeLZSS, sizeof(value), compressed_data, dstlen);
+                if (decompressed_data)
+                {
+                    SYSLOG("HBFX", "decompressed size = %lu", sizeof(value));
+                    if (memcmp(decompressed_data, value, sizeof(value)) != 0)
+                        SYSLOG("HBFX", "decompress failed - data");
+                    Buffer::deleter(decompressed_data);
+                }
+                else
+                    SYSLOG("HBFX", "decompress failed - nullptr");
+                Buffer::deleter(compressed_data);
+            }
+            else
+                SYSLOG("HBFX", "compress failed");
+            
+            SYSLOG("HBFX", "compress test 2");
+            dstlen = sizeof(value);
+            compressed_data = nvstorage.compress(value, dstlen);
+            if (compressed_data)
+            {
+                SYSLOG("HBFX", "compressed size = %u", dstlen);
+                uint8_t *decompressed_data = nvstorage.decompress(compressed_data, dstlen);
+                if (decompressed_data)
+                {
+                    SYSLOG("HBFX", "decompressed size = %u", dstlen);
+                    if (memcmp(decompressed_data, value, sizeof(value)) != 0)
+                        SYSLOG("HBFX", "decompress failed - data");
+                    Buffer::deleter(decompressed_data);
+                }
+                else
+                    SYSLOG("HBFX", "decompress failed - nullptr");
+                Buffer::deleter(compressed_data);
+            }
+            else
+                SYSLOG("HBFX", "compress failed");
+            
+            SYSLOG("HBFX", "compress test 3");
+            
+            const char* key = "NVStorageTestVar1";
+            PANIC_COND(!nvstorage.write(key, value, sizeof(value), NVStorage::OptChecksum, enckey), "HBFX", "write failed for %s", key);
+            PANIC_COND(!nvstorage.exists(key), "HBFX", "exists failed");
+            PANIC_COND((buf = nvstorage.read(key, size, NVStorage::OptAuto, enckey)) == nullptr, "HBFX", "read failed for %s", key);
+            PANIC_COND(size != sizeof(value), "HBFX", "read returned failed size for %s", key);
+            PANIC_COND(memcmp(buf, value, sizeof(value)) != 0, "HBFX", "memory is different from original for %s", key);
+            
+            key = "NVStorageTestVar2";
+            PANIC_COND(!nvstorage.write(key, value, sizeof(value), NVStorage::OptChecksum | NVStorage::OptCompressed, enckey), "HBFX", "write failed for %s", key);
+            PANIC_COND(!nvstorage.exists(key), "HBFX", "exists failed");
+            PANIC_COND((buf = nvstorage.read(key, size, NVStorage::OptAuto, enckey)) == nullptr, "HBFX", "read failed for %s", key);
+            PANIC_COND(size != sizeof(value), "HBFX", "read returned failed size for %s", key);
+            PANIC_COND(memcmp(buf, value, sizeof(value)) != 0, "HBFX", "memory is different from original for %s", key);
+            
+            key = "NVStorageTestVar3";
+            PANIC_COND(!nvstorage.write(key, value, sizeof(value), NVStorage::OptChecksum | NVStorage::OptEncrypted, enckey), "HBFX", "write failed for %s", key);
+            PANIC_COND(!nvstorage.exists(key), "HBFX", "exists failed for %s", key);
+            PANIC_COND((buf = nvstorage.read(key, size, NVStorage::OptAuto, enckey)) == nullptr, "HBFX", "read failed for %s", key);
+            PANIC_COND(size != sizeof(value), "HBFX", "read returned failed size for %s", key);
+            PANIC_COND(memcmp(buf, value, sizeof(value)) != 0, "HBFX", "memory is different from original for %s", key);
+            
+            key = "NVStorageTestVar4";
+            PANIC_COND(!nvstorage.write(key, value, sizeof(value), NVStorage::OptChecksum | NVStorage::OptEncrypted | NVStorage::OptCompressed, enckey), "HBFX", "write failed for %s", key);
+            PANIC_COND(!nvstorage.exists(key), "HBFX", "exists failed for %s", key);
+            PANIC_COND((buf = nvstorage.read(key, size, NVStorage::OptAuto, enckey)) == nullptr, "HBFX", "read failed for %s", key);
+            PANIC_COND(size != sizeof(value), "HBFX", "read returned failed size for %s", key);
+            PANIC_COND(memcmp(buf, value, sizeof(value)) != 0, "HBFX", "memory is different from original for %s", key);
+            
+            key = "NVStorageTestVar5";
+            PANIC_COND(!nvstorage.write(key, value, sizeof(value), NVStorage::OptAuto, enckey), "HBFX", "write failed for %s", key);
+            PANIC_COND(!nvstorage.exists(key), "HBFX", "exists failed for %s", key);
+            PANIC_COND((buf = nvstorage.read(key, size, NVStorage::OptAuto, enckey)) == nullptr, "HBFX", "read failed for %s", key);
+            PANIC_COND(size != sizeof(value), "HBFX", "read returned failed size for %s", key);
+            PANIC_COND(memcmp(buf, value, sizeof(value)) != 0, "HBFX", "memory is different from original for %s", key);
+            
+            key = "NVStorageTestVar6";
+            PANIC_COND(!nvstorage.write(key, value, sizeof(value), NVStorage::OptCompressed, enckey), "HBFX", "write failed for %s", key);
+            PANIC_COND(!nvstorage.exists(key), "HBFX", "exists failed for %s", key);
+            PANIC_COND((buf = nvstorage.read(key, size, NVStorage::OptAuto, enckey)) == nullptr, "HBFX", "read failed for %s", key);
+            PANIC_COND(size != sizeof(value), "HBFX", "read returned failed size for %s", key);
+            PANIC_COND(memcmp(buf, value, sizeof(value)) != 0, "HBFX", "memory is different from original for %s", key);
+            
+            key = "NVStorageTestVar7";
+            PANIC_COND(!nvstorage.write(key, value, sizeof(value), NVStorage::OptEncrypted, enckey), "HBFX", "write failed for %s", key);
+            PANIC_COND(!nvstorage.exists(key), "HBFX", "exists failed for %s", key);
+            PANIC_COND((buf = nvstorage.read(key, size, NVStorage::OptAuto, enckey)) == nullptr, "HBFX", "read failed for %s", key);
+            PANIC_COND(size != sizeof(value), "HBFX", "read returned failed size for %s", key);
+            PANIC_COND(memcmp(buf, value, sizeof(value)) != 0, "HBFX", "memory is different from original for %s", key);
+            
+            key = "NVStorageTestVar8";
+            PANIC_COND(!nvstorage.write(key, value, sizeof(value), NVStorage::OptRaw, enckey), "HBFX", "write failed for %s", key);
+            PANIC_COND(!nvstorage.exists(key), "HBFX", "exists failed for %s", key);
+            PANIC_COND((buf = nvstorage.read(key, size, NVStorage::OptRaw, enckey)) == nullptr, "HBFX", "read failed for %s", key);
+            PANIC_COND(size != sizeof(value), "HBFX", "read returned failed size for %s", key);
+            PANIC_COND(memcmp(buf, value, sizeof(value)) != 0, "HBFX", "memory is different from original for %s", key);
+            
+            SYSLOG("HBFX", "tests were finished");
+        }
+        else
+        {
+            SYSLOG("HBFX", "failed to initialize NVStorage");
+        }
+    }
     
-    //now free the dictionaries && iter
-    s->release();
-    
-    return (error == 0);
+    return nvstorage_initialized;
 }
