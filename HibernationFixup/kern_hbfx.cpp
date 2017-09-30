@@ -103,7 +103,19 @@ bool HBFX::init()
     gIOHibernateRTCVariablesKey = OSSymbol::withCStringNoCopy(kIOHibernateRTCVariablesKey);
     gIOHibernateSMCVariables    = OSSymbol::withCStringNoCopy(kIOHibernateSMCVariablesKey);
     
-    LiluAPI::Error error = lilu.onKextLoad(kextList, kextListSize,
+    LiluAPI::Error error = lilu.onPatcherLoad(
+                                              [](void *user, KernelPatcher &patcher) {
+                                                  callbackHBFX = static_cast<HBFX *>(user);
+                                                  callbackPatcher = &patcher;
+                                                  callbackHBFX->processKernel(patcher);
+                                              }, this);
+    
+    if (error != LiluAPI::Error::NoError) {
+        SYSLOG("HBFX", "failed to register onPatcherLoad method %d", error);
+        return false;
+    }
+    
+    error = lilu.onKextLoad(kextList, kextListSize,
                                            [](void *user, KernelPatcher &patcher, size_t index, mach_vm_address_t address, size_t size) {
                                                callbackHBFX = static_cast<HBFX *>(user);
                                                callbackPatcher = &patcher;
@@ -342,114 +354,119 @@ void HBFX::processKernel(KernelPatcher &patcher)
     if (!initialize_nvstorage())
         return;
     
-    auto method_address = patcher.solveSymbol(KernelPatcher::KernelID, "_IOHibernateSystemSleep");
-    if (method_address) {
-        DBGLOG("HBFX", "obtained _IOHibernateSystemSleep");
-        orgIOHibernateSystemSleep = reinterpret_cast<t_io_hibernate_system_sleep_callback>(patcher.routeFunction(method_address, reinterpret_cast<mach_vm_address_t>(IOHibernateSystemSleep), true));
-        if (patcher.getError() == KernelPatcher::Error::NoError) {
-            DBGLOG("HBFX", "routed _IOHibernateSystemSleep");
-        } else {
-            SYSLOG("HBFX", "failed to route _IOHibernateSystemSleep");
-        }
-    } else {
-        SYSLOG("HBFX", "failed to resolve _IOHibernateSystemSleep");
-    }
-    
-    method_address = patcher.solveSymbol(KernelPatcher::KernelID, "_ml_at_interrupt_context");
-    if (method_address) {
-        DBGLOG("HBFX", "obtained _ml_at_interrupt_context");
-        ml_at_interrupt_context = reinterpret_cast<t_ml_at_interrupt_context>(method_address);
-    } else {
-        SYSLOG("HBFX", "failed to resolve _ml_at_interrupt_context");
-    }
-    
-    method_address = patcher.solveSymbol(KernelPatcher::KernelID, "_ml_get_interrupts_enabled");
-    if (method_address) {
-        DBGLOG("HBFX", "obtained _ml_get_interrupts_enabled");
-        ml_get_interrupts_enabled = reinterpret_cast<t_ml_get_interrupts_enabled>(method_address);
-    } else {
-        SYSLOG("HBFX", "failed to resolve _ml_get_interrupts_enabled");
-    }
-    
-    method_address = patcher.solveSymbol(KernelPatcher::KernelID, "_ml_set_interrupts_enabled");
-    if (method_address) {
-        DBGLOG("HBFX", "obtained _ml_set_interrupts_enabled");
-        ml_set_interrupts_enabled = reinterpret_cast<t_ml_set_interrupts_enabled>(method_address);
-    } else {
-        SYSLOG("HBFX", "failed to resolve _ml_set_interrupts_enabled");
-    }
-    
-    if (config.dumpNvram)
+    if (!(progressState & ProcessingState::KernelRouted))
     {
-        method_address = patcher.solveSymbol(KernelPatcher::KernelID, "_sync");
+        auto method_address = patcher.solveSymbol(KernelPatcher::KernelID, "_IOHibernateSystemSleep");
         if (method_address) {
-            DBGLOG("HBFX", "obtained _sync");
-            sync = reinterpret_cast<t_sync>(method_address);
-        } else {
-            SYSLOG("HBFX", "failed to resolve _sync");
-        }
-        
-        method_address = patcher.solveSymbol(KernelPatcher::KernelID, "_preemption_enabled");
-        if (method_address) {
-            DBGLOG("HBFX", "obtained _preemption_enabled");
-            preemption_enabled = reinterpret_cast<t_preemption_enabled>(method_address);
-        } else {
-            SYSLOG("HBFX", "failed to resolve _preemption_enabled");
-        }
-        
-        method_address = patcher.solveSymbol(KernelPatcher::KernelID, "__enable_preemption");
-        if (method_address) {
-            DBGLOG("HBFX", "obtained __enable_preemption");
-            enable_preemption = reinterpret_cast<t_enable_preemption>(method_address);
-        } else {
-            SYSLOG("HBFX", "failed to resolve __enable_preemption");
-        }
-        
-        method_address = patcher.solveSymbol(KernelPatcher::KernelID, "__disable_preemption");
-        if (method_address) {
-            DBGLOG("HBFX", "obtained __disable_preemption");
-            disable_preemption = reinterpret_cast<t_disable_preemption>(method_address);
-        } else {
-            SYSLOG("HBFX", "failed to resolve __disable_preemption");
-        }
-        
-        if (sync && preemption_enabled && enable_preemption && disable_preemption && ml_at_interrupt_context &&
-            ml_get_interrupts_enabled && ml_set_interrupts_enabled)
-        {
-            method_address = patcher.solveSymbol(KernelPatcher::KernelID, "_packA");
-            if (method_address) {
-                DBGLOG("HBFX", "obtained _packA");
-                orgPackA = reinterpret_cast<t_pack_a>(patcher.routeFunction(method_address, reinterpret_cast<mach_vm_address_t>(packA), true));
-                if (patcher.getError() == KernelPatcher::Error::NoError) {
-                    DBGLOG("HBFX", "routed _packA");
-                } else {
-                    SYSLOG("HBFX", "failed to route _packA");
-                }
+            DBGLOG("HBFX", "obtained _IOHibernateSystemSleep");
+            orgIOHibernateSystemSleep = reinterpret_cast<t_io_hibernate_system_sleep_callback>(patcher.routeFunction(method_address, reinterpret_cast<mach_vm_address_t>(IOHibernateSystemSleep), true));
+            if (patcher.getError() == KernelPatcher::Error::NoError) {
+                DBGLOG("HBFX", "routed _IOHibernateSystemSleep");
             } else {
-                SYSLOG("HBFX", "failed to resolve _packA");
+                SYSLOG("HBFX", "failed to route _IOHibernateSystemSleep");
+            }
+        } else {
+            SYSLOG("HBFX", "failed to resolve _IOHibernateSystemSleep");
+        }
+        
+        method_address = patcher.solveSymbol(KernelPatcher::KernelID, "_ml_at_interrupt_context");
+        if (method_address) {
+            DBGLOG("HBFX", "obtained _ml_at_interrupt_context");
+            ml_at_interrupt_context = reinterpret_cast<t_ml_at_interrupt_context>(method_address);
+        } else {
+            SYSLOG("HBFX", "failed to resolve _ml_at_interrupt_context");
+        }
+        
+        method_address = patcher.solveSymbol(KernelPatcher::KernelID, "_ml_get_interrupts_enabled");
+        if (method_address) {
+            DBGLOG("HBFX", "obtained _ml_get_interrupts_enabled");
+            ml_get_interrupts_enabled = reinterpret_cast<t_ml_get_interrupts_enabled>(method_address);
+        } else {
+            SYSLOG("HBFX", "failed to resolve _ml_get_interrupts_enabled");
+        }
+        
+        method_address = patcher.solveSymbol(KernelPatcher::KernelID, "_ml_set_interrupts_enabled");
+        if (method_address) {
+            DBGLOG("HBFX", "obtained _ml_set_interrupts_enabled");
+            ml_set_interrupts_enabled = reinterpret_cast<t_ml_set_interrupts_enabled>(method_address);
+        } else {
+            SYSLOG("HBFX", "failed to resolve _ml_set_interrupts_enabled");
+        }
+        
+        if (config.dumpNvram)
+        {
+            method_address = patcher.solveSymbol(KernelPatcher::KernelID, "_sync");
+            if (method_address) {
+                DBGLOG("HBFX", "obtained _sync");
+                sync = reinterpret_cast<t_sync>(method_address);
+            } else {
+                SYSLOG("HBFX", "failed to resolve _sync");
+            }
+            
+            method_address = patcher.solveSymbol(KernelPatcher::KernelID, "_preemption_enabled");
+            if (method_address) {
+                DBGLOG("HBFX", "obtained _preemption_enabled");
+                preemption_enabled = reinterpret_cast<t_preemption_enabled>(method_address);
+            } else {
+                SYSLOG("HBFX", "failed to resolve _preemption_enabled");
+            }
+            
+            method_address = patcher.solveSymbol(KernelPatcher::KernelID, "__enable_preemption");
+            if (method_address) {
+                DBGLOG("HBFX", "obtained __enable_preemption");
+                enable_preemption = reinterpret_cast<t_enable_preemption>(method_address);
+            } else {
+                SYSLOG("HBFX", "failed to resolve __enable_preemption");
+            }
+            
+            method_address = patcher.solveSymbol(KernelPatcher::KernelID, "__disable_preemption");
+            if (method_address) {
+                DBGLOG("HBFX", "obtained __disable_preemption");
+                disable_preemption = reinterpret_cast<t_disable_preemption>(method_address);
+            } else {
+                SYSLOG("HBFX", "failed to resolve __disable_preemption");
+            }
+            
+            if (sync && preemption_enabled && enable_preemption && disable_preemption && ml_at_interrupt_context &&
+                ml_get_interrupts_enabled && ml_set_interrupts_enabled)
+            {
+                method_address = patcher.solveSymbol(KernelPatcher::KernelID, "_packA");
+                if (method_address) {
+                    DBGLOG("HBFX", "obtained _packA");
+                    orgPackA = reinterpret_cast<t_pack_a>(patcher.routeFunction(method_address, reinterpret_cast<mach_vm_address_t>(packA), true));
+                    if (patcher.getError() == KernelPatcher::Error::NoError) {
+                        DBGLOG("HBFX", "routed _packA");
+                    } else {
+                        SYSLOG("HBFX", "failed to route _packA");
+                    }
+                } else {
+                    SYSLOG("HBFX", "failed to resolve _packA");
+                }
             }
         }
-    }
-    
-    method_address = patcher.solveSymbol(KernelPatcher::KernelID, "__Z24IOPolledFilePollersSetupP18IOPolledFileIOVarsj");
-    if (method_address) {
-        DBGLOG("HBFX", "obtained __Z24IOPolledFilePollersSetupP18IOPolledFileIOVarsj");
-        orgIOPolledFilePollersSetup = reinterpret_cast<t_iopolled_file_pollers_setup>(patcher.routeFunction(method_address, reinterpret_cast<mach_vm_address_t>(IOPolledFilePollersSetup), true));
-        if (patcher.getError() == KernelPatcher::Error::NoError) {
-            DBGLOG("HBFX", "routed __Z24IOPolledFilePollersSetupP18IOPolledFileIOVarsj");
+        
+        method_address = patcher.solveSymbol(KernelPatcher::KernelID, "__Z24IOPolledFilePollersSetupP18IOPolledFileIOVarsj");
+        if (method_address) {
+            DBGLOG("HBFX", "obtained __Z24IOPolledFilePollersSetupP18IOPolledFileIOVarsj");
+            orgIOPolledFilePollersSetup = reinterpret_cast<t_iopolled_file_pollers_setup>(patcher.routeFunction(method_address, reinterpret_cast<mach_vm_address_t>(IOPolledFilePollersSetup), true));
+            if (patcher.getError() == KernelPatcher::Error::NoError) {
+                DBGLOG("HBFX", "routed __Z24IOPolledFilePollersSetupP18IOPolledFileIOVarsj");
+            } else {
+                SYSLOG("HBFX", "failed to route __Z24IOPolledFilePollersSetupP18IOPolledFileIOVarsj");
+            }
         } else {
-            SYSLOG("HBFX", "failed to route __Z24IOPolledFilePollersSetupP18IOPolledFileIOVarsj");
+            SYSLOG("HBFX", "failed to resolve __Z24IOPolledFilePollersSetupP18IOPolledFileIOVarsj");
         }
-    } else {
-        SYSLOG("HBFX", "failed to resolve __Z24IOPolledFilePollersSetupP18IOPolledFileIOVarsj");
-    }
-    
-    method_address = patcher.solveSymbol(KernelPatcher::KernelID, "_IOPolledFilePollersOpen");
-    if (method_address) {
-        DBGLOG("HBFX", "obtained _IOPolledFilePollersOpen");
-        IOPolledFilePollersOpen = reinterpret_cast<t_iopolled_file_pollers_open>(method_address);
-    } else {
-        SYSLOG("HBFX", "failed to resolve _IOPolledFilePollersOpen");
+        
+        method_address = patcher.solveSymbol(KernelPatcher::KernelID, "_IOPolledFilePollersOpen");
+        if (method_address) {
+            DBGLOG("HBFX", "obtained _IOPolledFilePollersOpen");
+            IOPolledFilePollersOpen = reinterpret_cast<t_iopolled_file_pollers_open>(method_address);
+        } else {
+            SYSLOG("HBFX", "failed to resolve _IOPolledFilePollersOpen");
+        }
+        
+        progressState |= ProcessingState::KernelRouted;
     }
     
     
@@ -463,9 +480,6 @@ void HBFX::processKext(KernelPatcher &patcher, size_t index, mach_vm_address_t a
 {
     if (!initialize_nvstorage())
         return;
-    
-    if (nvstorage.exists("EmuVariableUefiPresent"))
-        config.dumpNvram = true;
     
     if (progressState != ProcessingState::EverythingDone)
     {
@@ -511,12 +525,6 @@ void HBFX::processKext(KernelPatcher &patcher, size_t index, mach_vm_address_t a
                 }
             }
         }
-    
-        if (!(progressState & ProcessingState::KernelRouted))
-        {
-            processKernel(patcher);
-            progressState |= ProcessingState::KernelRouted;
-        }
     }
     
     // Ignore all the errors for other processors
@@ -532,8 +540,23 @@ bool HBFX::initialize_nvstorage()
     {
         if (nvstorage.init())
         {
+            DBGLOG("HBFX", "NVStorage was initialized");
+            
             nvstorage_initialized = true;
             
+            if (!config.dumpNvram && nvstorage.exists("EmuVariableUefiPresent"))
+            {
+                uint32_t size;
+                uint8_t *value = nvstorage.read("EmuVariableUefiPresent", size, NVStorage::OptRaw);
+                if (value != nullptr && !strcmp(reinterpret_cast<const char*>(value), "Yes"))
+                {
+                    DBGLOG("HBFX", "EmuVariableUefiPresent is detected, set dumpNvram to true");
+                    config.dumpNvram = true;
+                }
+                Buffer::deleter(value);
+            }
+            
+#ifdef DEBUG
             // short NVStorage test
             uint8_t value[] = {0x01, 0x02, 0x03, 0x04, 0xFF, 0x04, 0x03, 0x02, 0x01,
                                0x01, 0x02, 0x03, 0x04, 0xFF, 0x04, 0x03, 0x02, 0x01,
@@ -564,6 +587,7 @@ bool HBFX::initialize_nvstorage()
             PANIC_COND((buf = nvstorage.read(key, size, NVStorage::OptAuto, enckey)) == nullptr, "HBFX", "read failed for %s", key);
             PANIC_COND(size != sizeof(value), "HBFX", "read returned failed size for %s", key);
             PANIC_COND(memcmp(buf, value, sizeof(value)) != 0, "HBFX", "memory is different from original for %s", key);
+            nvstorage.remove(key);
             
             key = "NVStorageTestVar2";
             PANIC_COND(!nvstorage.write(key, value, sizeof(value), NVStorage::OptChecksum | NVStorage::OptCompressed, enckey), "HBFX", "write failed for %s", key);
@@ -571,6 +595,7 @@ bool HBFX::initialize_nvstorage()
             PANIC_COND((buf = nvstorage.read(key, size, NVStorage::OptAuto, enckey)) == nullptr, "HBFX", "read failed for %s", key);
             PANIC_COND(size != sizeof(value), "HBFX", "read returned failed size for %s", key);
             PANIC_COND(memcmp(buf, value, sizeof(value)) != 0, "HBFX", "memory is different from original for %s", key);
+            nvstorage.remove(key);
             
             key = "NVStorageTestVar3";
             PANIC_COND(!nvstorage.write(key, value, sizeof(value), NVStorage::OptChecksum | NVStorage::OptEncrypted, enckey), "HBFX", "write failed for %s", key);
@@ -578,6 +603,7 @@ bool HBFX::initialize_nvstorage()
             PANIC_COND((buf = nvstorage.read(key, size, NVStorage::OptAuto, enckey)) == nullptr, "HBFX", "read failed for %s", key);
             PANIC_COND(size != sizeof(value), "HBFX", "read returned failed size for %s", key);
             PANIC_COND(memcmp(buf, value, sizeof(value)) != 0, "HBFX", "memory is different from original for %s", key);
+            nvstorage.remove(key);
             
             key = "NVStorageTestVar4";
             PANIC_COND(!nvstorage.write(key, value, sizeof(value), NVStorage::OptChecksum | NVStorage::OptEncrypted | NVStorage::OptCompressed, enckey), "HBFX", "write failed for %s", key);
@@ -585,6 +611,7 @@ bool HBFX::initialize_nvstorage()
             PANIC_COND((buf = nvstorage.read(key, size, NVStorage::OptAuto, enckey)) == nullptr, "HBFX", "read failed for %s", key);
             PANIC_COND(size != sizeof(value), "HBFX", "read returned failed size for %s", key);
             PANIC_COND(memcmp(buf, value, sizeof(value)) != 0, "HBFX", "memory is different from original for %s", key);
+            nvstorage.remove(key);
             
             key = "NVStorageTestVar5";
             PANIC_COND(!nvstorage.write(key, value, sizeof(value), NVStorage::OptAuto, enckey), "HBFX", "write failed for %s", key);
@@ -592,6 +619,7 @@ bool HBFX::initialize_nvstorage()
             PANIC_COND((buf = nvstorage.read(key, size, NVStorage::OptAuto, enckey)) == nullptr, "HBFX", "read failed for %s", key);
             PANIC_COND(size != sizeof(value), "HBFX", "read returned failed size for %s", key);
             PANIC_COND(memcmp(buf, value, sizeof(value)) != 0, "HBFX", "memory is different from original for %s", key);
+            nvstorage.remove(key);
             
             key = "NVStorageTestVar6";
             PANIC_COND(!nvstorage.write(key, value, sizeof(value), NVStorage::OptCompressed, enckey), "HBFX", "write failed for %s", key);
@@ -599,6 +627,7 @@ bool HBFX::initialize_nvstorage()
             PANIC_COND((buf = nvstorage.read(key, size, NVStorage::OptAuto, enckey)) == nullptr, "HBFX", "read failed for %s", key);
             PANIC_COND(size != sizeof(value), "HBFX", "read returned failed size for %s", key);
             PANIC_COND(memcmp(buf, value, sizeof(value)) != 0, "HBFX", "memory is different from original for %s", key);
+            nvstorage.remove(key);
             
             key = "NVStorageTestVar7";
             PANIC_COND(!nvstorage.write(key, value, sizeof(value), NVStorage::OptEncrypted, enckey), "HBFX", "write failed for %s", key);
@@ -606,6 +635,7 @@ bool HBFX::initialize_nvstorage()
             PANIC_COND((buf = nvstorage.read(key, size, NVStorage::OptAuto, enckey)) == nullptr, "HBFX", "read failed for %s", key);
             PANIC_COND(size != sizeof(value), "HBFX", "read returned failed size for %s", key);
             PANIC_COND(memcmp(buf, value, sizeof(value)) != 0, "HBFX", "memory is different from original for %s", key);
+            nvstorage.remove(key);
             
             key = "NVStorageTestVar8";
             PANIC_COND(!nvstorage.write(key, value, sizeof(value), NVStorage::OptRaw, enckey), "HBFX", "write failed for %s", key);
@@ -613,8 +643,10 @@ bool HBFX::initialize_nvstorage()
             PANIC_COND((buf = nvstorage.read(key, size, NVStorage::OptRaw, enckey)) == nullptr, "HBFX", "read failed for %s", key);
             PANIC_COND(size != sizeof(value), "HBFX", "read returned failed size for %s", key);
             PANIC_COND(memcmp(buf, value, sizeof(value)) != 0, "HBFX", "memory is different from original for %s", key);
+            nvstorage.remove(key);
+#endif
             
-            SYSLOG("HBFX", "tests were finished");
+            DBGLOG("HBFX", "tests were finished");
         }
         else
         {
