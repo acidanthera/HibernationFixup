@@ -266,7 +266,7 @@ int HBFX::packA(char *inbuf, uint32_t length, uint32_t buflen)
                 {
                     unsigned int part_size = (pi_size > max_size) ? max_size : pi_size;
                     snprintf(key, sizeof(key), "AAPL,PanicInfo%04d", counter++);
-                    callbackHBFX->nvstorage.write(key, reinterpret_cast<const uint8_t*>(inbuf), part_size);
+                    callbackHBFX->nvstorage.write(key, reinterpret_cast<const uint8_t*>(inbuf), part_size, NVStorage::OptRaw);
                     pi_size -= part_size;
                     inbuf += part_size;
                 }
