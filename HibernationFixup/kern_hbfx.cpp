@@ -171,8 +171,7 @@ IOReturn HBFX::IOHibernateSystemSleep(void)
             OSData *rtc = OSDynamicCast(OSData, IOService::getPMRootDomain()->getProperty(gIOHibernateRTCVariablesKey));
             if (rtc && !callbackHBFX->nvstorage.exists(kIOHibernateRTCVariablesKey))
             {
-                if (!callbackHBFX->nvstorage.write(kIOHibernateRTCVariablesKey,
-                                                   reinterpret_cast<const uint8_t*>(rtc->getBytesNoCopy()), rtc->getLength(), NVStorage::OptRaw))
+                if (!callbackHBFX->nvstorage.write(kIOHibernateRTCVariablesKey, rtc, NVStorage::OptRaw))
                     SYSLOG("HBFX", "IOHibernateRTCVariablesKey can't be written to NVRAM.");
                 else
                 {
@@ -190,8 +189,7 @@ IOReturn HBFX::IOHibernateSystemSleep(void)
             OSData *smc = OSDynamicCast(OSData, IOService::getPMRootDomain()->getProperty(gIOHibernateSMCVariables));
             if (smc && !callbackHBFX->nvstorage.exists(kIOHibernateSMCVariablesKey))
             {
-                if (!callbackHBFX->nvstorage.write(kIOHibernateSMCVariablesKey,
-                                                   reinterpret_cast<const uint8_t*>(smc->getBytesNoCopy()), smc->getLength(), NVStorage::OptRaw))
+                if (!callbackHBFX->nvstorage.write(kIOHibernateSMCVariablesKey, smc, NVStorage::OptRaw))
                     SYSLOG("HBFX", "IOHibernateSMCVariablesKey can't be written to NVRAM.");
             }
             
@@ -544,16 +542,15 @@ bool HBFX::initialize_nvstorage()
             
             nvstorage_initialized = true;
             
-            if (!config.dumpNvram && nvstorage.exists("EmuVariableUefiPresent"))
+            if (!config.dumpNvram)
             {
-                uint32_t size;
-                uint8_t *value = nvstorage.read("EmuVariableUefiPresent", size, NVStorage::OptRaw);
-                if (value != nullptr && !strcmp(reinterpret_cast<const char*>(value), "Yes"))
+                OSData *data = nvstorage.read("EmuVariableUefiPresent", NVStorage::OptRaw);
+                if (data && data->isEqualTo(OSString::withCStringNoCopy("Yes")))
                 {
                     DBGLOG("HBFX", "EmuVariableUefiPresent is detected, set dumpNvram to true");
                     config.dumpNvram = true;
                 }
-                Buffer::deleter(value);
+                OSSafeReleaseNULL(data);
             }
             
 #ifdef DEBUG
@@ -644,9 +641,19 @@ bool HBFX::initialize_nvstorage()
             PANIC_COND(size != sizeof(value), "HBFX", "read returned failed size for %s", key);
             PANIC_COND(memcmp(buf, value, sizeof(value)) != 0, "HBFX", "memory is different from original for %s", key);
             nvstorage.remove(key);
-#endif
             
+            key = "NVStorageTestVar9";
+            OSData *data = OSData::withBytes("some string to be written in nvram", 32);
+            OSData *newdata;
+            PANIC_COND(!nvstorage.write(key, data, NVStorage::OptRaw, enckey), "HBFX", "write failed for %s", key);
+            PANIC_COND(!nvstorage.exists(key), "HBFX", "exists failed for %s", key);
+            PANIC_COND((newdata = nvstorage.read(key, NVStorage::OptRaw, enckey)) == nullptr, "HBFX", "read failed for %s", key);
+            PANIC_COND(!newdata->isEqualTo(data), "HBFX", "memory is different from original for %s", key);
+            data->release();
+            newdata->release();
+
             DBGLOG("HBFX", "tests were finished");
+#endif
         }
         else
         {
