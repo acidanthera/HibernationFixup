@@ -74,18 +74,6 @@ enum {
     kIOPCIConfigMaximumLatency          = 0x3F
 };
 
-enum
-{
-    kIOPolledPreflightState           = 1,
-    kIOPolledBeforeSleepState         = 2,
-    kIOPolledAfterSleepState          = 3,
-    kIOPolledPostflightState          = 4,
-    
-    kIOPolledPreflightCoreDumpState   = 5,
-    kIOPolledPostflightCoreDumpState  = 6,
-    
-    kIOPolledBeforeSleepStateAborted  = 7,
-};
 
 static const char *kextIOPCIFamilyPath[] { "/System/Library/Extensions/IOPCIFamily.kext/IOPCIFamily" };
 
@@ -145,7 +133,6 @@ IOReturn HBFX::IOHibernateSystemSleep(void)
     
     if (callbackHBFX && callbackHBFX->orgIOHibernateSystemSleep)
     {
-        callbackHBFX->file_vars_valid = false;
         result = callbackHBFX->orgIOHibernateSystemSleep();
         DBGLOG("HBFX", "IOHibernateSystemSleep is called, result is: %x", result);
 
@@ -159,15 +146,6 @@ IOReturn HBFX::IOHibernateSystemSleep(void)
         
         if (result == KERN_SUCCESS || ioHibernateState == kIOHibernateStateHibernating)
         {
-            if (callbackHBFX->file_vars_valid && callbackHBFX->IOPolledFilePollersOpen)
-            {
-                IOReturn open_result = callbackHBFX->IOPolledFilePollersOpen(callbackHBFX->file_vars, kIOPolledBeforeSleepState, true);
-                if (open_result != KERN_SUCCESS)
-                    SYSLOG("HBFX", "IOPolledFilePollersOpen returned error %d", open_result);
-                else
-                    DBGLOG("HBFX", "IOPolledFilePollersOpen returned success");
-            }
-            
             OSData *rtc = OSDynamicCast(OSData, IOService::getPMRootDomain()->getProperty(gIOHibernateRTCVariablesKey));
             if (rtc && !callbackHBFX->nvstorage.exists(kIOHibernateRTCVariablesKey))
             {
@@ -323,30 +301,6 @@ void HBFX::extendedConfigWrite16(IOService *that, UInt64 offset, UInt16 data)
 
 //==============================================================================
 
-IOReturn HBFX::IOPolledFilePollersSetup(void * vars, uint32_t openState)
-{
-    IOReturn result = KERN_SUCCESS;
-    if (callbackHBFX && callbackHBFX->orgIOPolledFilePollersSetup)
-    {
-        result = callbackHBFX->orgIOPolledFilePollersSetup(vars, openState);
-        
-        if (openState == kIOPolledPreflightState)
-        {
-            callbackHBFX->file_vars_valid = (result == KERN_SUCCESS);
-            if (callbackHBFX->file_vars_valid)
-            {
-                DBGLOG("HBFX", "IOPolledFilePollersSetup called with state kIOPolledPreflightState");
-                lilu_os_memcpy(callbackHBFX->file_vars, vars, sizeof(callbackHBFX->file_vars));
-                callbackHBFX->file_vars_valid = true;
-            }
-        }
-    }
-        
-    return result;
-}
-
-//==============================================================================
-
 void HBFX::processKernel(KernelPatcher &patcher)
 {
     if (!initialize_nvstorage())
@@ -441,27 +395,6 @@ void HBFX::processKernel(KernelPatcher &patcher)
                     SYSLOG("HBFX", "failed to resolve _packA");
                 }
             }
-        }
-        
-        method_address = patcher.solveSymbol(KernelPatcher::KernelID, "__Z24IOPolledFilePollersSetupP18IOPolledFileIOVarsj");
-        if (method_address) {
-            DBGLOG("HBFX", "obtained __Z24IOPolledFilePollersSetupP18IOPolledFileIOVarsj");
-            orgIOPolledFilePollersSetup = reinterpret_cast<t_iopolled_file_pollers_setup>(patcher.routeFunction(method_address, reinterpret_cast<mach_vm_address_t>(IOPolledFilePollersSetup), true));
-            if (patcher.getError() == KernelPatcher::Error::NoError) {
-                DBGLOG("HBFX", "routed __Z24IOPolledFilePollersSetupP18IOPolledFileIOVarsj");
-            } else {
-                SYSLOG("HBFX", "failed to route __Z24IOPolledFilePollersSetupP18IOPolledFileIOVarsj");
-            }
-        } else {
-            SYSLOG("HBFX", "failed to resolve __Z24IOPolledFilePollersSetupP18IOPolledFileIOVarsj");
-        }
-        
-        method_address = patcher.solveSymbol(KernelPatcher::KernelID, "_IOPolledFilePollersOpen");
-        if (method_address) {
-            DBGLOG("HBFX", "obtained _IOPolledFilePollersOpen");
-            IOPolledFilePollersOpen = reinterpret_cast<t_iopolled_file_pollers_open>(method_address);
-        } else {
-            SYSLOG("HBFX", "failed to resolve _IOPolledFilePollersOpen");
         }
         
         progressState |= ProcessingState::KernelRouted;
