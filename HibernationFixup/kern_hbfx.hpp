@@ -78,11 +78,6 @@ private:
      */
     using t_extended_config_write16 = void (*) (IOService *that, UInt64 offset, UInt16 data);
     
-    /**
-     *  IOPolledFilePollersSetup callback type
-     */
-    using t_iopolled_file_pollers_setup = IOReturn (*) (void * vars, uint32_t openState);
-    
 
 	/**
 	 *  Hooked methods / callbacks
@@ -92,7 +87,6 @@ private:
     static int          packA(char *inbuf, uint32_t length, uint32_t buflen);
     static IOReturn     restoreMachineState(IOService *that, IOOptionBits options, IOService * device);
     static void         extendedConfigWrite16(IOService *that, UInt64 offset, UInt16 data);
-    static IOReturn     IOPolledFilePollersSetup(void * vars, uint32_t openState);
     
 	/**
 	 *  Trampolines for original method invocations
@@ -101,7 +95,6 @@ private:
     t_pack_a                                orgPackA {nullptr};
     t_restore_machine_state                 orgRestoreMachineState {nullptr};
     t_extended_config_write16               orgExtendedConfigWrite16 {nullptr};
-    t_iopolled_file_pollers_setup           orgIOPolledFilePollersSetup {nullptr};
 
     
     /**
@@ -132,8 +125,6 @@ private:
     t_iopolled_file_pollers_open IOPolledFilePollersOpen {nullptr};
     
     bool    disable_pci_config_command {false};
-    bool    file_vars_valid {false};
-    uint8_t file_vars[1024] = {};
     
     /**
      *  Current progress mask
