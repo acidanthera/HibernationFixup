@@ -34,6 +34,7 @@
 		1CF01C901C8CF97F002DCEA3 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
 		1CF01C921C8CF997002DCEA3 /* Changelog.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = Changelog.md; sourceTree = "<group>"; };
 		1CF01C931C8DF02E002DCEA3 /* LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = LICENSE.txt; sourceTree = "<group>"; };
+		CE1846D41F8A241700F86648 /* LegacyRootDomain.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = LegacyRootDomain.h; sourceTree = "<group>"; };
 		CE405EBA1E49DD7100AA0B3D /* kern_compression.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = kern_compression.hpp; sourceTree = "<group>"; };
 		CE405EBB1E49DD7100AA0B3D /* kern_disasm.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = kern_disasm.hpp; sourceTree = "<group>"; };
 		CE405EBC1E49DD7100AA0B3D /* kern_file.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = kern_file.hpp; sourceTree = "<group>"; };
@@ -87,6 +88,7 @@
 		1C748C291C21952C0024EED2 /* HibernationFixup */ = {
 			isa = PBXGroup;
 			children = (
+				CE1846D41F8A241700F86648 /* LegacyRootDomain.h */,
 				F67C73C51E68AD890061CB0A /* kern_config.hpp */,
 				F6C535E61E60963800A3A34B /* kern_hbfx.cpp */,
 				F6C535E71E60963800A3A34B /* kern_hbfx.hpp */,

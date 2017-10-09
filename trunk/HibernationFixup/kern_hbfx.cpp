@@ -5,7 +5,8 @@
 //  Copyright © 2017 lvs1974. All rights reserved.
 //
 
-#include <IOKit/pwr_mgt/RootDomain.h>
+#include <Library/LegacyIOService.h>
+#include "LegacyRootDomain.h"
 
 #include <Headers/kern_api.hpp>
 #include <Headers/kern_file.hpp>
@@ -15,19 +16,9 @@
 #include "kern_config.hpp"
 #include "kern_hbfx.hpp"
 
-
-
-
 // Only used in apple-driven callbacks
 static HBFX *callbackHBFX = nullptr;
 static KernelPatcher *callbackPatcher = nullptr;
-static const OSSymbol *gIOHibernateRTCVariablesKey = nullptr;
-static const OSSymbol *gIOHibernateSMCVariables = nullptr;
-
-
-
-extern proc_t kernproc;
-
 
 // gIOHibernateState, kIOHibernateStateKey
 enum
@@ -78,19 +69,16 @@ enum {
 static const char *kextIOPCIFamilyPath[] { "/System/Library/Extensions/IOPCIFamily.kext/IOPCIFamily" };
 
 static KernelPatcher::KextInfo kextList[] {
-    { "com.apple.iokit.IOPCIFamily", kextIOPCIFamilyPath, 1, {true, false}, {}, KernelPatcher::KextInfo::Unloaded }
+    { "com.apple.iokit.IOPCIFamily", kextIOPCIFamilyPath, 1, {true}, {}, KernelPatcher::KextInfo::Unloaded }
 };
 
-static const size_t kextListSize {1};
+static const size_t kextListSize {arrsize(kextList)};
 
 
 //==============================================================================
 
 bool HBFX::init()
 {
-    gIOHibernateRTCVariablesKey = OSSymbol::withCStringNoCopy(kIOHibernateRTCVariablesKey);
-    gIOHibernateSMCVariables    = OSSymbol::withCStringNoCopy(kIOHibernateSMCVariablesKey);
-    
     LiluAPI::Error error = lilu.onPatcherLoad(
                                               [](void *user, KernelPatcher &patcher) {
                                                   callbackHBFX = static_cast<HBFX *>(user);
@@ -146,7 +134,7 @@ IOReturn HBFX::IOHibernateSystemSleep(void)
         
         if (result == KERN_SUCCESS || ioHibernateState == kIOHibernateStateHibernating)
         {
-            OSData *rtc = OSDynamicCast(OSData, IOService::getPMRootDomain()->getProperty(gIOHibernateRTCVariablesKey));
+            OSData *rtc = OSDynamicCast(OSData, IOService::getPMRootDomain()->getProperty(kIOHibernateRTCVariablesKey));
             if (rtc && !callbackHBFX->nvstorage.exists(kIOHibernateRTCVariablesKey))
             {
                 if (!callbackHBFX->nvstorage.write(kIOHibernateRTCVariablesKey, rtc, NVStorage::OptRaw))
@@ -164,7 +152,7 @@ IOReturn HBFX::IOHibernateSystemSleep(void)
                 }
             }
             
-            OSData *smc = OSDynamicCast(OSData, IOService::getPMRootDomain()->getProperty(gIOHibernateSMCVariables));
+            OSData *smc = OSDynamicCast(OSData, IOService::getPMRootDomain()->getProperty(kIOHibernateSMCVariablesKey));
             if (smc && !callbackHBFX->nvstorage.exists(kIOHibernateSMCVariablesKey))
             {
                 if (!callbackHBFX->nvstorage.write(kIOHibernateSMCVariablesKey, smc, NVStorage::OptRaw))
@@ -486,7 +474,7 @@ bool HBFX::initialize_nvstorage()
                 OSSafeReleaseNULL(data);
             }
             
-#ifdef DEBUG
+#if defined(DEBUG) && defined(DEBUG_NVSTORAGE)
             // short NVStorage test
             uint8_t value[] = {0x01, 0x02, 0x03, 0x04, 0xFF, 0x04, 0x03, 0x02, 0x01,
                                0x01, 0x02, 0x03, 0x04, 0xFF, 0x04, 0x03, 0x02, 0x01,

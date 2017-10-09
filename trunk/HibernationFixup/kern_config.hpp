@@ -24,8 +24,6 @@ public:
 public:
 	/**
 	 *  Retrieve boot arguments
-	 *
-	 *  @return true if allowed to continue
 	 */
 	void readArguments();
 	
@@ -33,8 +31,7 @@ public:
 	 *  dump nvram to /nvram.plist
 	 */
     bool dumpNvram {false};
-    
-    
+
     /**
      *  patch PCI Family
      */
@@ -44,14 +41,7 @@ public:
      *  device list (can be separated by comma, space or something like that)
      */
     char ignored_device_list[64] = {};
-	
-	
-#ifdef DEBUG
-	static constexpr const char *fullName {xStringify(PRODUCT_NAME) " Kernel Extension " xStringify(MODULE_VERSION) " DEBUG build"};
-#else
-	static constexpr const char *fullName {xStringify(PRODUCT_NAME) " Kernel Extension " xStringify(MODULE_VERSION)};
-#endif
-	
+
     Configuration() = default;
 };
 

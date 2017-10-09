@@ -83,7 +83,6 @@ private:
 	 *  Hooked methods / callbacks
 	 */
     static IOReturn     IOHibernateSystemSleep(void);
-    static uint32_t     hibernate_write_image(void);
     static int          packA(char *inbuf, uint32_t length, uint32_t buflen);
     static IOReturn     restoreMachineState(IOService *that, IOOptionBits options, IOService * device);
     static void         extendedConfigWrite16(IOService *that, UInt64 offset, UInt16 data);
