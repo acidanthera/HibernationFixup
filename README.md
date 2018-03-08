@@ -23,3 +23,12 @@ IOHibernateRTCVariables from the system registry and writes it to NVRAM.
 - [Apple](https://www.apple.com) for macOS  
 - [vit9696](https://github.com/vit9696) for [Lilu.kext](https://github.com/vit9696/Lilu) and great help in implementing some features 
 - [lvs1974](https://applelife.ru/members/lvs1974.53809/) for writing the software and maintaining it
+
+#### Boot-args
+- "-hbfx-dump-nvram" saves NVRAM to a file nvram.plist before hibernation and after kernel panic (with panic info)
+- "-hbfx-patch-pci" enables patching of IOPCIFamily to avoid hang & black screen after resume (restoreMachineState should not be called for any devices)
+- "hbfx-patch-pci=XHC,IMEI,IGPU" allows to specify explicit devices (restoreMachineState should not be called for them)
+- "-hbfxdbg" turns on debugging output
+- "-hbfxbeta" enables loading on unsupported osx
+- "-hbfxoff" disables kext loading
+
