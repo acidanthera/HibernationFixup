@@ -12,6 +12,7 @@
 #include <Headers/kern_file.hpp>
 #include <Headers/kern_compat.hpp>
 #include <Headers/kern_compression.hpp>
+#include <Headers/kern_iokit.hpp>
 
 #include "kern_config.hpp"
 #include "kern_hbfx.hpp"
@@ -36,36 +37,6 @@ enum
     kMachineRestoreTunnels      = 0x00000008,
 };
 
-/* Definitions of PCI Config Registers */
-enum {
-    kIOPCIConfigVendorID                = 0x00,
-    kIOPCIConfigDeviceID                = 0x02,
-    kIOPCIConfigCommand                 = 0x04,
-    kIOPCIConfigStatus                  = 0x06,
-    kIOPCIConfigRevisionID              = 0x08,
-    kIOPCIConfigClassCode               = 0x09,
-    kIOPCIConfigCacheLineSize           = 0x0C,
-    kIOPCIConfigLatencyTimer            = 0x0D,
-    kIOPCIConfigHeaderType              = 0x0E,
-    kIOPCIConfigBIST                    = 0x0F,
-    kIOPCIConfigBaseAddress0            = 0x10,
-    kIOPCIConfigBaseAddress1            = 0x14,
-    kIOPCIConfigBaseAddress2            = 0x18,
-    kIOPCIConfigBaseAddress3            = 0x1C,
-    kIOPCIConfigBaseAddress4            = 0x20,
-    kIOPCIConfigBaseAddress5            = 0x24,
-    kIOPCIConfigCardBusCISPtr           = 0x28,
-    kIOPCIConfigSubSystemVendorID       = 0x2C,
-    kIOPCIConfigSubSystemID             = 0x2E,
-    kIOPCIConfigExpansionROMBase        = 0x30,
-    kIOPCIConfigCapabilitiesPtr         = 0x34,
-    kIOPCIConfigInterruptLine           = 0x3C,
-    kIOPCIConfigInterruptPin            = 0x3D,
-    kIOPCIConfigMinimumGrant            = 0x3E,
-    kIOPCIConfigMaximumLatency          = 0x3F
-};
-
-
 static const char *kextIOPCIFamilyPath[] { "/System/Library/Extensions/IOPCIFamily.kext/IOPCIFamily" };
 
 static KernelPatcher::KextInfo kextList[] {
@@ -73,7 +44,6 @@ static KernelPatcher::KextInfo kextList[] {
 };
 
 static const size_t kextListSize {arrsize(kextList)};
-
 
 //==============================================================================
 
@@ -139,17 +109,6 @@ IOReturn HBFX::IOHibernateSystemSleep(void)
             {
                 if (!callbackHBFX->nvstorage.write(kIOHibernateRTCVariablesKey, rtc, NVStorage::OptRaw))
                     SYSLOG("HBFX", "IOHibernateRTCVariablesKey can't be written to NVRAM.");
-                else
-                {
-                    SYSLOG("HBFX", "IOHibernateRTCVariablesKey has been written to NVRAM.");
-                    
-                    // we should remove fakesmc-key-HBKP-ch8* if it exists
-                    if (callbackHBFX->nvstorage.exists(kFakeSMCHBKB))
-                    {
-                        callbackHBFX->nvstorage.remove(kFakeSMCHBKB);
-                        SYSLOG("HBFX", "fakesmc-key-HBKP-ch8* has been removed from NVRAM.");
-                    }
-                }
             }
             
             OSData *smc = OSDynamicCast(OSData, IOService::getPMRootDomain()->getProperty(kIOHibernateSMCVariablesKey));
@@ -274,7 +233,7 @@ void HBFX::extendedConfigWrite16(IOService *that, UInt64 offset, UInt16 data)
 {
     if (callbackHBFX && callbackHBFX->orgExtendedConfigWrite16)
     {
-        if (callbackHBFX->disable_pci_config_command && offset == kIOPCIConfigCommand)
+        if (callbackHBFX->disable_pci_config_command && offset == WIOKit::PCIRegister::kIOPCIConfigCommand)
         {
             if (strlen(config.ignored_device_list) == 0 || strstr(config.ignored_device_list, that->getName()) != nullptr)
             {
