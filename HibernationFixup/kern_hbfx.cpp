@@ -430,7 +430,7 @@ bool HBFX::checkSecondRTCMemoryBankAvailability()
         // kApplePMUUserClientMagicCookie
         auto ret = srv->newUserClient(current_task(), current_task(), 0x101beef, &rtcHandler);
         if (ret == kIOReturnSuccess) {
-            SYSLOG("HBFX", "successful rtc client obtain");
+            DBGLOG("HBFX", "successful rtc client obtain");
             IOExternalMethodArguments args {};
             
             uint8_t magic[4] = {};
@@ -446,7 +446,7 @@ bool HBFX::checkSecondRTCMemoryBankAvailability()
             
             ret = rtcHandler->externalMethod(0, &args);
             if (ret == kIOReturnSuccess) {
-                SYSLOG("HBFX", "rtc read success %02X %02X %02X %02X", magic[0], magic[1], magic[2], magic[3]);
+                DBGLOG("HBFX", "rtc read success");
                 result = true;
             } else {
                 SYSLOG("HBFX", "rtc read failure %X", ret);
