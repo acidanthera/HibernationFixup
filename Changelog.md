@@ -31,3 +31,7 @@ HibernationFixup Changelog
 #### v1.1.7
 - Fixes for 1.1.6b (Release was non-working)
 - Use pollers to provoke writing of SMC-keys earlier
+
+#### v1.2.1
+- Save hibernation keys in NVRAM only if boot-arg `-hbfx-dump-nvram` is specified or if the second bank of RTC memory (next block of 128 bytes) is not available
+- PCI Family patch is always enabled, boot-arg `-hbfx-patch-pci` is obsolete. A new boot arg `-hbfx-disable-patch-pci` is introduced to disable any patching

@@ -17,9 +17,9 @@ public:
     static const char *bootargOff[];
     static const char *bootargDebug[];
     static const char *bootargBeta[];
-    static constexpr const char *bootargDumpNvram {"-hbfx-dump-nvram"}; // write NVRAM to file
-    static constexpr const char *bootargPatchPCI {"-hbfx-patch-pci"};   // patch pci family
-    static constexpr const char *bootargPatchPCIWithList {"hbfx-patch-pci"};   // patch pci family with list
+    static constexpr const char *bootargDumpNvram {"-hbfx-dump-nvram"};                 // write NVRAM to file
+    static constexpr const char *bootargDisablePatchPCI  {"-hbfx-disable-patch-pci"};   // disable patch pci family
+    static constexpr const char *bootargPatchPCIWithList {"hbfx-patch-pci"};            // patch pci family with list
     
 public:
 	/**
@@ -35,7 +35,7 @@ public:
     /**
      *  patch PCI Family
      */
-    bool patchPCIFamily {false};
+    bool patchPCIFamily {true};
     
     /**
      *  device list (can be separated by comma, space or something like that)

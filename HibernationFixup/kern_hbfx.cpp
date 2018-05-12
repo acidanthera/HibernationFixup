@@ -6,6 +6,7 @@
 //
 
 #include <Library/LegacyIOService.h>
+#include <IOKit/IOUserClient.h>
 #include "LegacyRootDomain.h"
 
 #include <Headers/kern_api.hpp>
@@ -13,6 +14,7 @@
 #include <Headers/kern_compat.hpp>
 #include <Headers/kern_compression.hpp>
 #include <Headers/kern_iokit.hpp>
+
 
 #include "kern_config.hpp"
 #include "kern_hbfx.hpp"
@@ -55,12 +57,12 @@ bool HBFX::init()
                                                   callbackPatcher = &patcher;
                                                   callbackHBFX->processKernel(patcher);
                                               }, this);
-    
+
     if (error != LiluAPI::Error::NoError) {
         SYSLOG("HBFX", "failed to register onPatcherLoad method %d", error);
         return false;
     }
-    
+
     error = lilu.onKextLoad(kextList, kextListSize,
                                            [](void *user, KernelPatcher &patcher, size_t index, mach_vm_address_t address, size_t size) {
                                                callbackHBFX = static_cast<HBFX *>(user);
@@ -250,6 +252,12 @@ void HBFX::extendedConfigWrite16(IOService *that, UInt64 offset, UInt16 data)
 
 void HBFX::processKernel(KernelPatcher &patcher)
 {
+    if (config.dumpNvram == false && checkSecondRTCMemoryBankAvailability())
+    {
+        SYSLOG("HBFX", "all kernel patches will be skipped since the second bank of RTC memory is available");
+        return;
+    }
+    
     if (!initialize_nvstorage())
         return;
     
@@ -369,7 +377,7 @@ void HBFX::processKext(KernelPatcher &patcher, size_t index, mach_vm_address_t a
                 {
                     if (!(progressState & ProcessingState::IOPCIFamilyRouted) && !strcmp(kextList[i].id, "com.apple.iokit.IOPCIFamily"))
                     {
-                        auto method_address = patcher.solveSymbol(index, "__ZN11IOPCIBridge19restoreMachineStateEjP11IOPCIDevice");
+                        auto method_address = patcher.solveSymbol(index, "__ZN11IOPCIBridge19restoreMachineStateEjP11IOPCIDevice", address, size);
                         if (method_address) {
                             DBGLOG("HBFX", "obtained __ZN11IOPCIBridge19restoreMachineStateEjP11IOPCIDevice");
                             orgRestoreMachineState = reinterpret_cast<t_restore_machine_state>(patcher.routeFunction(method_address, reinterpret_cast<mach_vm_address_t>(restoreMachineState), true));
@@ -384,7 +392,7 @@ void HBFX::processKext(KernelPatcher &patcher, size_t index, mach_vm_address_t a
                         
                         if (orgRestoreMachineState)
                         {
-                            method_address = patcher.solveSymbol(index, "__ZN11IOPCIDevice21extendedConfigWrite16Eyt");
+                            method_address = patcher.solveSymbol(index, "__ZN11IOPCIDevice21extendedConfigWrite16Eyt", address, size);
                             if (method_address) {
                                 DBGLOG("HBFX", "obtained __ZN11IOPCIDevice21extendedConfigWrite16Eyt");
                                 orgExtendedConfigWrite16 = reinterpret_cast<t_extended_config_write16>(patcher.routeFunction(method_address, reinterpret_cast<mach_vm_address_t>(extendedConfigWrite16), true));
@@ -407,6 +415,51 @@ void HBFX::processKext(KernelPatcher &patcher, size_t index, mach_vm_address_t a
     
     // Ignore all the errors for other processors
     patcher.clearError();
+}
+
+//==============================================================================
+
+bool HBFX::checkSecondRTCMemoryBankAvailability()
+{
+    bool result = false;
+    DBGLOG("HBFX", "waiting for AppleRTC...");
+    auto srv = IOService::waitForService(IOService::serviceMatching("AppleRTC"));
+    if (srv) {
+        DBGLOG("HBFX", "got rtc service");
+        IOUserClient * rtcHandler { nullptr };
+        // kApplePMUUserClientMagicCookie
+        auto ret = srv->newUserClient(current_task(), current_task(), 0x101beef, &rtcHandler);
+        if (ret == kIOReturnSuccess) {
+            SYSLOG("HBFX", "successful rtc client obtain");
+            IOExternalMethodArguments args {};
+            
+            uint8_t magic[4] = {};
+            uint64_t offset = 128;
+            
+            args.version = kIOExternalMethodArgumentsCurrentVersion;
+            args.selector = 0;
+            args.asyncWakePort = MACH_PORT_NULL;
+            args.scalarInput = &offset;
+            args.scalarInputCount = 1;
+            args.structureOutput = magic;
+            args.structureOutputSize = 4;
+            
+            ret = rtcHandler->externalMethod(0, &args);
+            if (ret == kIOReturnSuccess) {
+                SYSLOG("HBFX", "rtc read success %02X %02X %02X %02X", magic[0], magic[1], magic[2], magic[3]);
+                result = true;
+            } else {
+                SYSLOG("HBFX", "rtc read failure %X", ret);
+            }
+
+        } else {
+            SYSLOG("HBFX", "rtc client obtain failure %X", ret);
+        }
+    } else {
+        SYSLOG("HBFX", "no rtc service");
+    }
+    
+    return result;
 }
 
 //==============================================================================

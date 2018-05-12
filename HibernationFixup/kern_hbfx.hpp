@@ -48,6 +48,11 @@ private:
     void processKext(KernelPatcher &patcher, size_t index, mach_vm_address_t address, size_t size);
     
     /**
+     *  Check the second RTC memory bank availability
+     */
+    bool checkSecondRTCMemoryBankAvailability();
+    
+    /**
      *  Initialize NVStorage
      *
      */

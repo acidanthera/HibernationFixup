@@ -5,9 +5,7 @@ An open source kernel extension providing a sync between RTC variables and NVRAM
 By design the mach kernel encrypts hibernate sleepimage and writes the encryption key to variable 
 "IOHibernateRTCVariables" in the system registry (PMRootDomain).
 Somehow this value has to be written into RTC (or SMC) in order the boot.efi could read it.
-But in my case it doesn't work: there are no any variables in SMC (actually FakeSMC). 
-I use FakeSMC with possibility to save SMC keys to NVRAM
-and Clover with possibility to restore these keys from NVRAM and provide SMC Protocol (SMCHelper.efi) for boot.efi.
+But in case if you have to limit your RTC memory to 1 bank (128 bytes), it doesn't work: there are no any variables in SMC/NVRAM/RTC (actually FakeSMC). 
 
 Fortunately, boot.efi can read key "IOHibernateRTCVariables" from NVRAM!
 This kext detects entering into "hibernate" power state, reads variable 
@@ -20,8 +18,8 @@ IOHibernateRTCVariables from the system registry and writes it to NVRAM.
 
 #### Boot-args
 - `-hbfx-dump-nvram` saves NVRAM to a file nvram.plist before hibernation and after kernel panic (with panic info)
-- `-hbfx-patch-pci` enables patching of IOPCIFamily to avoid hang & black screen after resume (restoreMachineState should not be called for any devices)
-- `hbfx-patch-pci=XHC,IMEI,IGPU` allows to specify explicit devices (restoreMachineState should not be called for them)
+- `-hbfx-disable-patch-pci` disables patching of IOPCIFamily (this patch helps to avoid hang & black screen after resume (restoreMachineState won't be called for all devices)
+- `hbfx-patch-pci=XHC,IMEI,IGPU` allows to specify explicit device list and restoreMachineState won't  be called only for these devices)
 - `-hbfxdbg` turns on debugging output
 - `-hbfxbeta` enables loading on unsupported osx
 - `-hbfxoff` disables kext loading
