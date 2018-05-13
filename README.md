@@ -24,6 +24,9 @@ IOHibernateRTCVariables from the system registry and writes it to NVRAM.
 - `-hbfxbeta` enables loading on unsupported osx
 - `-hbfxoff` disables kext loading
 
+#### Dependencies
+- Lilu v1.2.4
+
 #### Credits
 - [Apple](https://www.apple.com) for macOS  
 - [vit9696](https://github.com/vit9696) for [Lilu.kext](https://github.com/vit9696/Lilu) and great help in implementing some features 

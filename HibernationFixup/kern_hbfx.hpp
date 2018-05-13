@@ -50,7 +50,7 @@ private:
     /**
      *  Check the second RTC memory bank availability
      */
-    bool checkSecondRTCMemoryBankAvailability();
+    bool checkRTCExtendedMemory();
     
     /**
      *  Initialize NVStorage
@@ -83,6 +83,11 @@ private:
      */
     using t_extended_config_write16 = void (*) (IOService *that, UInt64 offset, UInt16 data);
     
+    /**
+     *  extendedConfigRead16 callback type
+     */
+    using t_extended_config_read16 = UInt16 (*) (IOService *that, UInt64 offset);
+    
 
 	/**
 	 *  Hooked methods / callbacks
@@ -99,6 +104,7 @@ private:
     t_pack_a                                orgPackA {nullptr};
     t_restore_machine_state                 orgRestoreMachineState {nullptr};
     t_extended_config_write16               orgExtendedConfigWrite16 {nullptr};
+    t_extended_config_read16                orgExtendedConfigRead16 {nullptr};
 
     
     /**

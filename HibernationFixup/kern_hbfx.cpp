@@ -6,7 +6,6 @@
 //
 
 #include <Library/LegacyIOService.h>
-#include <IOKit/IOUserClient.h>
 #include "LegacyRootDomain.h"
 
 #include <Headers/kern_api.hpp>
@@ -14,6 +13,7 @@
 #include <Headers/kern_compat.hpp>
 #include <Headers/kern_compression.hpp>
 #include <Headers/kern_iokit.hpp>
+#include <Headers/kern_rtc.hpp>
 
 
 #include "kern_config.hpp"
@@ -239,7 +239,10 @@ void HBFX::extendedConfigWrite16(IOService *that, UInt64 offset, UInt16 data)
         {
             if (strlen(config.ignored_device_list) == 0 || strstr(config.ignored_device_list, that->getName()) != nullptr)
             {
-                DBGLOG("HBFX", "extendedConfigWrite16 won't be called for device %s", that->getName());
+#ifdef DEBUG
+                UInt16 status = callbackHBFX->orgExtendedConfigRead16 ? callbackHBFX->orgExtendedConfigRead16(that, WIOKit::PCIRegister::kIOPCIConfigStatus) : 0;
+                DBGLOG("HBFX", "extendedConfigWrite16 won't be called for device %s, offset = %08llX, data = %04X, status reg = %04X", that->getName(), offset, data, status);
+#endif
                 return;
             }
         }
@@ -252,7 +255,7 @@ void HBFX::extendedConfigWrite16(IOService *that, UInt64 offset, UInt16 data)
 
 void HBFX::processKernel(KernelPatcher &patcher)
 {
-    if (config.dumpNvram == false && checkSecondRTCMemoryBankAvailability())
+    if (config.dumpNvram == false && checkRTCExtendedMemory())
     {
         SYSLOG("HBFX", "all kernel patches will be skipped since the second bank of RTC memory is available");
         return;
@@ -404,6 +407,8 @@ void HBFX::processKext(KernelPatcher &patcher, size_t index, mach_vm_address_t a
                             } else {
                                 SYSLOG("HBFX", "failed to resolve __ZN11IOPCIDevice21extendedConfigWrite16Eyt");
                             }
+                            
+                            orgExtendedConfigRead16 = reinterpret_cast<t_extended_config_read16>(patcher.solveSymbol(index, "__ZN11IOPCIDevice20extendedConfigRead16Ey", address, size));
                         }
                         
                         progressState |= ProcessingState::IOPCIFamilyRouted;
@@ -419,44 +424,14 @@ void HBFX::processKext(KernelPatcher &patcher, size_t index, mach_vm_address_t a
 
 //==============================================================================
 
-bool HBFX::checkSecondRTCMemoryBankAvailability()
+bool HBFX::checkRTCExtendedMemory()
 {
     bool result = false;
-    DBGLOG("HBFX", "waiting for AppleRTC...");
-    auto srv = IOService::waitForService(IOService::serviceMatching("AppleRTC"));
-    if (srv) {
-        DBGLOG("HBFX", "got rtc service");
-        IOUserClient * rtcHandler { nullptr };
-        // kApplePMUUserClientMagicCookie
-        auto ret = srv->newUserClient(current_task(), current_task(), 0x101beef, &rtcHandler);
-        if (ret == kIOReturnSuccess) {
-            DBGLOG("HBFX", "successful rtc client obtain");
-            IOExternalMethodArguments args {};
-            
-            uint8_t magic[4] = {};
-            uint64_t offset = 128;
-            
-            args.version = kIOExternalMethodArgumentsCurrentVersion;
-            args.selector = 0;
-            args.asyncWakePort = MACH_PORT_NULL;
-            args.scalarInput = &offset;
-            args.scalarInputCount = 1;
-            args.structureOutput = magic;
-            args.structureOutputSize = 4;
-            
-            ret = rtcHandler->externalMethod(0, &args);
-            if (ret == kIOReturnSuccess) {
-                DBGLOG("HBFX", "rtc read success");
-                result = true;
-            } else {
-                SYSLOG("HBFX", "rtc read failure %X", ret);
-            }
-
-        } else {
-            SYSLOG("HBFX", "rtc client obtain failure %X", ret);
-        }
-    } else {
-        SYSLOG("HBFX", "no rtc service");
+    RTCStorage rtc_storage;
+    if (rtc_storage.init())
+    {
+        result = rtc_storage.checkExtendedMemory();
+        rtc_storage.deinit();
     }
     
     return result;
