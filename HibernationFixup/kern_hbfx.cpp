@@ -39,6 +39,22 @@ enum
     kMachineRestoreTunnels      = 0x00000008,
 };
 
+/* Command register definitions */
+enum {
+    kIOPCICommandIOSpace                = 0x0001,
+    kIOPCICommandMemorySpace            = 0x0002,
+    kIOPCICommandBusMaster              = 0x0004,
+    kIOPCICommandSpecialCycles          = 0x0008,
+    kIOPCICommandMemWrInvalidate        = 0x0010,
+    kIOPCICommandPaletteSnoop           = 0x0020,
+    kIOPCICommandParityError            = 0x0040,
+    kIOPCICommandAddressStepping        = 0x0080,
+    kIOPCICommandSERR                   = 0x0100,
+    kIOPCICommandFastBack2Back          = 0x0200,
+    kIOPCICommandInterruptDisable       = 0x0400
+};
+
+
 static const char *kextIOPCIFamilyPath[] { "/System/Library/Extensions/IOPCIFamily.kext/IOPCIFamily" };
 
 static KernelPatcher::KextInfo kextList[] {
@@ -120,7 +136,7 @@ IOReturn HBFX::IOHibernateSystemSleep(void)
                     SYSLOG("HBFX", "IOHibernateSMCVariablesKey can't be written to NVRAM.");
             }
             
-            if (config.dumpNvram)
+            if (ADDPR(hbfx_config).dumpNvram)
             {
                 uint32_t size;
                 if (uint8_t *buf = callbackHBFX->nvstorage.read(kGlobalBoot0082Key, size, NVStorage::OptRaw))
@@ -218,12 +234,12 @@ IOReturn HBFX::restoreMachineState(IOService *that, IOOptionBits options, IOServ
     if (callbackHBFX && callbackHBFX->orgRestoreMachineState)
     {
         if (kMachineRestoreDehibernate & options)
-            callbackHBFX->disable_pci_config_command = true;
+            callbackHBFX->correct_pci_config_command = true;
         
         result = callbackHBFX->orgRestoreMachineState(that, options, device);
         
         if (kMachineRestoreDehibernate & options)
-            callbackHBFX->disable_pci_config_command = false;
+            callbackHBFX->correct_pci_config_command = false;
     }
     
     return result;
@@ -235,18 +251,18 @@ void HBFX::extendedConfigWrite16(IOService *that, UInt64 offset, UInt16 data)
 {
     if (callbackHBFX && callbackHBFX->orgExtendedConfigWrite16)
     {
-        if (callbackHBFX->disable_pci_config_command && offset == WIOKit::PCIRegister::kIOPCIConfigCommand)
+        if (callbackHBFX->correct_pci_config_command && offset == WIOKit::PCIRegister::kIOPCIConfigCommand)
         {
-            if (strlen(config.ignored_device_list) == 0 || strstr(config.ignored_device_list, that->getName()) != nullptr)
+            if (strlen(ADDPR(hbfx_config).ignored_device_list) == 0 || strstr(ADDPR(hbfx_config).ignored_device_list, that->getName()) != nullptr)
             {
-#ifdef DEBUG
-                UInt16 status = callbackHBFX->orgExtendedConfigRead16 ? callbackHBFX->orgExtendedConfigRead16(that, WIOKit::PCIRegister::kIOPCIConfigStatus) : 0;
-                DBGLOG("HBFX", "extendedConfigWrite16 won't be called for device %s, offset = %08llX, data = %04X, status reg = %04X", that->getName(), offset, data, status);
-#endif
-                return;
+                if (!(data & kIOPCICommandMemorySpace))
+                {
+                    DBGLOG("HBFX", "HBFX will add flag kIOPCICommandMemorySpace for deivce %s, offset = %08llX, data = %04X", that->getName(), offset, data);
+                    data |= kIOPCICommandMemorySpace;
+                }
             }
         }
-        
+		
         callbackHBFX->orgExtendedConfigWrite16(that, offset, data);
     }
 }
@@ -255,7 +271,7 @@ void HBFX::extendedConfigWrite16(IOService *that, UInt64 offset, UInt16 data)
 
 void HBFX::processKernel(KernelPatcher &patcher)
 {
-    if (config.dumpNvram == false && checkRTCExtendedMemory())
+    if (ADDPR(hbfx_config).dumpNvram == false && checkRTCExtendedMemory())
     {
         SYSLOG("HBFX", "all kernel patches will be skipped since the second bank of RTC memory is available");
         return;
@@ -303,7 +319,7 @@ void HBFX::processKernel(KernelPatcher &patcher)
             SYSLOG("HBFX", "failed to resolve _ml_set_interrupts_enabled");
         }
         
-        if (config.dumpNvram)
+        if (ADDPR(hbfx_config).dumpNvram)
         {
             method_address = patcher.solveSymbol(KernelPatcher::KernelID, "_sync");
             if (method_address) {
@@ -372,7 +388,7 @@ void HBFX::processKext(KernelPatcher &patcher, size_t index, mach_vm_address_t a
     
     if (progressState != ProcessingState::EverythingDone)
     {
-        if (config.patchPCIFamily)
+        if (ADDPR(hbfx_config).patchPCIFamily)
         {
             for (size_t i = 0; i < kextListSize; i++)
             {
@@ -407,8 +423,6 @@ void HBFX::processKext(KernelPatcher &patcher, size_t index, mach_vm_address_t a
                             } else {
                                 SYSLOG("HBFX", "failed to resolve __ZN11IOPCIDevice21extendedConfigWrite16Eyt");
                             }
-                            
-                            orgExtendedConfigRead16 = reinterpret_cast<t_extended_config_read16>(patcher.solveSymbol(index, "__ZN11IOPCIDevice20extendedConfigRead16Ey", address, size));
                         }
                         
                         progressState |= ProcessingState::IOPCIFamilyRouted;
@@ -450,13 +464,13 @@ bool HBFX::initialize_nvstorage()
             
             nvstorage_initialized = true;
             
-            if (!config.dumpNvram)
+            if (!ADDPR(hbfx_config).dumpNvram)
             {
                 OSData *data = nvstorage.read("EmuVariableUefiPresent", NVStorage::OptRaw);
                 if (data && data->isEqualTo(OSString::withCStringNoCopy("Yes")))
                 {
                     DBGLOG("HBFX", "EmuVariableUefiPresent is detected, set dumpNvram to true");
-                    config.dumpNvram = true;
+                    ADDPR(hbfx_config).dumpNvram = true;
                 }
                 OSSafeReleaseNULL(data);
             }

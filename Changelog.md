@@ -35,3 +35,7 @@ HibernationFixup Changelog
 #### v1.2.1
 - Save hibernation keys in NVRAM only if boot-arg `-hbfx-dump-nvram` is specified or if the second bank of RTC memory (next block of 128 bytes) is not available
 - PCI Family patch is always enabled, boot-arg `-hbfx-patch-pci` is obsolete. A new boot arg `-hbfx-disable-patch-pci` is introduced to disable any patching
+
+#### v1.2.2
+- Fix a name conflict for config variable
+- Improve pci patch (allow to write to PCI config command register, but bit `memory space` must be always set )

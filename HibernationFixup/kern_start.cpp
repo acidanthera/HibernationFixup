@@ -26,7 +26,7 @@ const char *Configuration::bootargBeta[] {
 };
 
 
-Configuration config;
+Configuration ADDPR(hbfx_config);
 
 
 void Configuration::readArguments() {
@@ -56,16 +56,16 @@ PluginConfiguration ADDPR(config) {
 	xStringify(PRODUCT_NAME),
     parseModuleVersion(xStringify(MODULE_VERSION)),
     LiluAPI::AllowNormal,
-	config.bootargOff,
-	arrsize(config.bootargOff),
-	config.bootargDebug,
-	arrsize(config.bootargDebug),
-	config.bootargBeta,
-	arrsize(config.bootargBeta),
+	ADDPR(hbfx_config).bootargOff,
+	arrsize(ADDPR(hbfx_config).bootargOff),
+	ADDPR(hbfx_config).bootargDebug,
+	arrsize(ADDPR(hbfx_config).bootargDebug),
+	ADDPR(hbfx_config).bootargBeta,
+	arrsize(ADDPR(hbfx_config).bootargBeta),
 	KernelVersion::MountainLion,
 	KernelVersion::HighSierra,
 	[]() {
-        config.readArguments();
+        ADDPR(hbfx_config).readArguments();
 		hbfx.init();
 	}
 };

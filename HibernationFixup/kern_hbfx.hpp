@@ -82,11 +82,7 @@ private:
      *  extendedConfigWrite16 callback type
      */
     using t_extended_config_write16 = void (*) (IOService *that, UInt64 offset, UInt16 data);
-    
-    /**
-     *  extendedConfigRead16 callback type
-     */
-    using t_extended_config_read16 = UInt16 (*) (IOService *that, UInt64 offset);
+	
     
 
 	/**
@@ -104,7 +100,6 @@ private:
     t_pack_a                                orgPackA {nullptr};
     t_restore_machine_state                 orgRestoreMachineState {nullptr};
     t_extended_config_write16               orgExtendedConfigWrite16 {nullptr};
-    t_extended_config_read16                orgExtendedConfigRead16 {nullptr};
 
     
     /**
@@ -134,7 +129,7 @@ private:
     using t_iopolled_file_pollers_open = IOReturn (*) (void * vars, uint32_t state, bool abortable);
     t_iopolled_file_pollers_open IOPolledFilePollersOpen {nullptr};
     
-    bool    disable_pci_config_command {false};
+    bool    correct_pci_config_command {false};
     
     /**
      *  Current progress mask

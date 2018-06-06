@@ -8,6 +8,7 @@
 #ifndef kern_config_private_h
 #define kern_config_private_h
 
+#include <Headers/kern_util.hpp>
 
 class Configuration {
 public:
@@ -45,6 +46,6 @@ public:
     Configuration() = default;
 };
 
-extern Configuration config;
+extern Configuration ADDPR(hbfx_config);
 
 #endif /* kern_config_private_h */
