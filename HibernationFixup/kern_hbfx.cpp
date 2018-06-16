@@ -255,11 +255,8 @@ void HBFX::extendedConfigWrite16(IOService *that, UInt64 offset, UInt16 data)
         {
             if (strlen(ADDPR(hbfx_config).ignored_device_list) == 0 || strstr(ADDPR(hbfx_config).ignored_device_list, that->getName()) != nullptr)
             {
-                if (!(data & kIOPCICommandMemorySpace))
-                {
-                    DBGLOG("HBFX", "HBFX will add flag kIOPCICommandMemorySpace for deivce %s, offset = %08llX, data = %04X", that->getName(), offset, data);
-                    data |= kIOPCICommandMemorySpace;
-                }
+                DBGLOG("HBFX", "Write to kIOPCICommandMemorySpace is refused for deivce %s, offset = %08llX, data = %04X", that->getName(), offset, data);
+                return;
             }
         }
 		
