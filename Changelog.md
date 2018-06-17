@@ -39,7 +39,3 @@ HibernationFixup Changelog
 #### v1.2.2
 - Fix a name conflict for config variable
 - Improve pci patch (allow to write to PCI config command register, but bit `memory space` must be always set )
-
-#### v1.2.3
-- Revert pci patch implementation
-- Requires Lilu 1.1.4
