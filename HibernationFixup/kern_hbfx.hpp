@@ -77,7 +77,7 @@ private:
 	 *  Sync file buffers & interrupts & preemption control
 	 */
 	using t_sync = int (*) (__unused proc_t p, __unused struct sync_args *uap, __unused int32_t *retval);
-	t_sync sync;
+	t_sync sync {nullptr};
 	
 	using t_preemption_enabled = boolean_t (*) (void);
 	t_preemption_enabled preemption_enabled {nullptr};
