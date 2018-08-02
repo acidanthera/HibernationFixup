@@ -1,6 +1,8 @@
 HibernationFixup
 ==================
 
+[![Build Status](https://travis-ci.org/acidanthera/HibernationFixup?branch=master)](https://travis-ci.org/acidanthera/HibernationFixup) [![Scan Status](https://scan.coverity.com/projects/16402/badge.svg?flat=1)](https://scan.coverity.com/projects/16402)
+
 An open source kernel extension providing a sync between RTC variables and NVRAM.
 By design the mach kernel encrypts hibernate sleepimage and writes the encryption key to variable 
 "IOHibernateRTCVariables" in the system registry (PMRootDomain).
@@ -31,5 +33,3 @@ IOHibernateRTCVariables from the system registry and writes it to NVRAM.
 - [Apple](https://www.apple.com) for macOS  
 - [vit9696](https://github.com/vit9696) for [Lilu.kext](https://github.com/vit9696/Lilu) and great help in implementing some features 
 - [lvs1974](https://applelife.ru/members/lvs1974.53809/) for writing the software and maintaining it
-
-
