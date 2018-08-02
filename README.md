@@ -1,7 +1,7 @@
 HibernationFixup
 ==================
 
-[![Build Status](https://travis-ci.org/acidanthera/HibernationFixup?branch=master)](https://travis-ci.org/acidanthera/HibernationFixup) [![Scan Status](https://scan.coverity.com/projects/16402/badge.svg?flat=1)](https://scan.coverity.com/projects/16402)
+[![Build Status](https://travis-ci.org/acidanthera/HibernationFixup.svg?branch=master)](https://travis-ci.org/acidanthera/HibernationFixup) [![Scan Status](https://scan.coverity.com/projects/16402/badge.svg?flat=1)](https://scan.coverity.com/projects/16402)
 
 An open source kernel extension providing a sync between RTC variables and NVRAM.
 By design the mach kernel encrypts hibernate sleepimage and writes the encryption key to variable 
@@ -27,7 +27,7 @@ IOHibernateRTCVariables from the system registry and writes it to NVRAM.
 - `-hbfxoff` disables kext loading
 
 #### Dependencies
-- Lilu v1.2.4
+- Lilu v1.2.5
 
 #### Credits
 - [Apple](https://www.apple.com) for macOS  
