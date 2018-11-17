@@ -18,9 +18,10 @@ public:
 	static const char *bootargOff[];
 	static const char *bootargDebug[];
 	static const char *bootargBeta[];
-	static constexpr const char *bootargDumpNvram {"-hbfx-dump-nvram"};                 // write NVRAM to file
-	static constexpr const char *bootargDisablePatchPCI  {"-hbfx-disable-patch-pci"};   // disable patch pci family
-	static constexpr const char *bootargPatchPCIWithList {"hbfx-patch-pci"};            // patch pci family with list
+	static constexpr const char *bootargDumpNvram         {"-hbfx-dump-nvram"};          // write NVRAM to file
+	static constexpr const char *bootargDisablePatchPCI   {"-hbfx-disable-patch-pci"};   // disable patch pci family
+	static constexpr const char *bootargPatchPCIWithList  {"hbfx-patch-pci"};            // patch pci family with list
+	static constexpr const char *bootargAutoHibernateMode {"hbfx-ahbm"};		    	 // auto hibernate modes
 
 public:
 	/**
@@ -41,7 +42,26 @@ public:
 	/**
 	 *  device list (can be separated by comma, space or something like that)
 	 */
-	char ignored_device_list[64] = {};
+	char ignored_device_list[64] {};
+	
+	/* Flags used to control automatic hibernation behavior (takes place only when system goes to sleep)
+	 */
+	enum AutoHibernateModes {
+		// If this flag is set, system will hibernate istead of regular sleep (flags below can be used to limit this behavior)
+		EnableAutoHibenation            = 1,
+		// Auto hibernation can happen when lid is closed (if bit is not set - no matter which status lid has)
+		WhenLidIsClosed                 = 2,
+		// Auto hibernation can happen when external power is disconnected (if bit is not set - no matter whether it is connected)
+		WhenExternalPowerIsDisconnected = 4,
+		// Auto hibernation can happen when battery is not charging (if bit is not set - no matter whether it is charging)
+		WhenBatteryIsNotCharging        = 8,
+		// Auto hibernation can happen when battery is at warning level (osx is responsible for this level)
+		WhenBatteryIsAtWarnLevel        = 16,
+		// Auto hibernation can happen when battery is at critical level (osx is responsible for this level)
+		WhenBatteryAtCriticalLevel      = 32
+	};
+	
+	int autoHibernateMode {0};
 
 	Configuration() = default;
 };

@@ -44,6 +44,11 @@ void Configuration::readArguments() {
 			DBGLOG("HBFX", "boot-arg %s specified, turn off PCIFamily patching", bootargDisablePatchPCI);
 		}
 	}
+	
+	if (PE_parse_boot_argn(bootargAutoHibernateMode, &autoHibernateMode, sizeof(autoHibernateMode)))
+	{
+		DBGLOG("HBFX", "boot-arg %s specified, value is 0x%02x", bootargAutoHibernateMode, autoHibernateMode);
+	}
 }
 
 PluginConfiguration ADDPR(config) {

@@ -5,6 +5,7 @@
 //  Copyright © 2017 lvs1974. All rights reserved.
 //
 
+#include <IOKit/pwr_mgt/IOPMPowerSource.h>
 #include <Library/LegacyIOService.h>
 #include "LegacyRootDomain.h"
 
@@ -151,6 +152,91 @@ IOReturn HBFX::IOHibernateSystemSleep(void)
 
 //==============================================================================
 
+bool HBFX::IOPMrootDomain_getHibernateSettings(IOPMrootDomain *that, unsigned int *hibernateModePtr, unsigned int *hibernateFreeRatio, unsigned int *hibernateFreeTime)
+{
+	bool result = FunctionCast(IOPMrootDomain_getHibernateSettings, callbackHBFX->orgGetHibernateSettings)(that, hibernateModePtr, hibernateFreeRatio, hibernateFreeTime);
+	if (!result)
+		SYSLOG("HBFX", "orgGetHibernateSettings returned false");
+	
+	IOPMPowerSource *power_source = nullptr;
+	
+	while (result && hibernateModePtr && OSDynamicCast(OSBoolean, that->getProperty(kAppleSleepDisabled)) == kOSBooleanFalse) {
+		auto matching = IOService::serviceMatching("IOPMPowerSource");
+		if (matching) {
+			power_source = OSDynamicCast(IOPMPowerSource, IOService::copyMatchingService(matching));
+			matching->release();
+			if (!power_source) {
+				SYSLOG("HBFX", "failed to get IOPMPowerSource");
+				break;
+			}
+		} else {
+			SYSLOG("HBFX", "failed to allocate IOPMPowerSource service matching");
+			break;
+		}
+		
+		auto autoHibernateMode = ADDPR(hbfx_config).autoHibernateMode;
+		bool whenLidIsClosed = (autoHibernateMode & Configuration::WhenLidIsClosed);
+		bool whenExternalPowerIsDisconnected = (autoHibernateMode & Configuration::WhenExternalPowerIsDisconnected);
+		bool whenBatteryIsNotCharging = (autoHibernateMode & Configuration::WhenBatteryIsNotCharging);
+		bool whenBatteryIsAtWarnLevel = (autoHibernateMode & Configuration::WhenBatteryIsAtWarnLevel);
+		bool whenBatteryAtCriticalLevel = (autoHibernateMode & Configuration::WhenBatteryAtCriticalLevel);
+	
+		if (whenLidIsClosed && OSDynamicCast(OSBoolean, that->getProperty(kAppleClamshellStateKey)) != kOSBooleanTrue) {
+			DBGLOG("HBFX", "Auto hibernate: clamshell is open, do not force to hibernate");
+			break;
+		}
+		
+		if (power_source->batteryInstalled()) {
+			if (whenExternalPowerIsDisconnected && power_source->externalConnected()) {
+				DBGLOG("HBFX", "Auto hibernate: external is connected, do not force to hibernate");
+				break;
+			}
+			
+			if (whenBatteryIsNotCharging && power_source->isCharging()) {
+				DBGLOG("HBFX", "Auto hibernate: battery is charging, do not force to hibernate");
+				break;
+			}
+			
+			if (whenBatteryIsAtWarnLevel && !power_source->atWarnLevel()) {
+				DBGLOG("HBFX", "Auto hibernate: battery is not at warning level, do not force to hibernate");
+				break;
+			}
+			
+			if (whenBatteryAtCriticalLevel && !power_source->atCriticalLevel()) {
+				DBGLOG("HBFX", "Auto hibernate: battery is not at critical level, do not force to hibernate");
+				break;
+			}
+		}
+
+		*hibernateModePtr = 25;
+		DBGLOG("HBFX", "Auto hibernate: force hibernate mode to 25");
+		break;
+	}
+	
+	if (power_source)
+		power_source->release();
+	
+	return result;
+}
+
+//==============================================================================
+
+IOReturn HBFX::IOPMrootDomain_setMaintenanceWakeCalendar(IOPMrootDomain *that, IOPMCalendarStruct *calendar)
+{
+	IOReturn result = FunctionCast(IOPMrootDomain_setMaintenanceWakeCalendar, callbackHBFX->orgSetMaintenanceWakeCalendar)(that, calendar);
+	if (result != KERN_SUCCESS)
+		SYSLOG("HBFX", "orgSetMaintenanceWakeCalendar returned error 0x%x", result);
+	else if (calendar != nullptr)
+	{
+		DBGLOG("HBFX", "Maintenance event was set to %02d.%02d.%04d  %02d:%02d:%02d, selector = %d",
+			   calendar->day, calendar->month, calendar->year, calendar->hour, calendar->minute, calendar->second, calendar->selector);
+	}
+	
+	return result;
+}
+
+//==============================================================================
+
 int HBFX::packA(char *inbuf, uint32_t length, uint32_t buflen)
 {
 	char key[128];
@@ -239,6 +325,15 @@ void HBFX::extendedConfigWrite16(IOService *that, UInt64 offset, UInt16 data)
 
 void HBFX::processKernel(KernelPatcher &patcher)
 {
+	if ((ADDPR(hbfx_config).autoHibernateMode & Configuration::EnableAutoHibenation) && !(progressState & ProcessingState::KernelRouted))
+	{
+		KernelPatcher::RouteRequest requests[] = {
+			{ "__ZN14IOPMrootDomain20getHibernateSettingsEPjS0_S0_", IOPMrootDomain_getHibernateSettings, orgGetHibernateSettings },
+		    { "__ZN14IOPMrootDomain26setMaintenanceWakeCalendarEPK18IOPMCalendarStruct", IOPMrootDomain_setMaintenanceWakeCalendar, orgSetMaintenanceWakeCalendar }
+		};
+		patcher.routeMultiple(KernelPatcher::KernelID, requests);
+	}
+	
 	if (ADDPR(hbfx_config).dumpNvram == false && checkRTCExtendedMemory())
 	{
 		DBGLOG("HBFX", "all kernel patches will be skipped since the second bank of RTC memory is available");

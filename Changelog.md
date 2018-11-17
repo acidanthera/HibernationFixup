@@ -1,5 +1,8 @@
 HibernationFixup Changelog
 ============================
+#### v1.2.4
+- New feature:  forces hibernate mode depending on specified factors (auto hibernate modes)
+
 #### v1.2.3
 - Basic 10.14 support
 

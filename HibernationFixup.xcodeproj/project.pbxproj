@@ -50,6 +50,7 @@
 		CE405ED21E49F9FC00AA0B3D /* kern_api.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = kern_api.hpp; sourceTree = "<group>"; };
 		CE405ED81E4A080700AA0B3D /* plugin_start.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = plugin_start.cpp; sourceTree = "<group>"; };
 		CE405EDA1E4A080F00AA0B3D /* plugin_start.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = plugin_start.hpp; sourceTree = "<group>"; };
+		F663E1A121937ADC00E72622 /* IOKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = IOKit.framework; path = System/Library/Frameworks/IOKit.framework; sourceTree = SDKROOT; };
 		F67C73C51E68AD890061CB0A /* kern_config.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; path = kern_config.hpp; sourceTree = "<group>"; };
 		F6C535E61E60963800A3A34B /* kern_hbfx.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = kern_hbfx.cpp; sourceTree = "<group>"; };
 		F6C535E71E60963800A3A34B /* kern_hbfx.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; path = kern_hbfx.hpp; sourceTree = "<group>"; };
@@ -74,6 +75,7 @@
 				1C748C291C21952C0024EED2 /* HibernationFixup */,
 				CE405EC81E49DD7B00AA0B3D /* SDK */,
 				1C748C281C21952C0024EED2 /* Products */,
+				F663E1A021937ADB00E72622 /* Frameworks */,
 			);
 			sourceTree = "<group>";
 		};
@@ -146,6 +148,14 @@
 				CE405EC51E49DD7100AA0B3D /* Library */,
 			);
 			name = SDK;
+			sourceTree = "<group>";
+		};
+		F663E1A021937ADB00E72622 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				F663E1A121937ADC00E72622 /* IOKit.framework */,
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -359,7 +369,10 @@
 					"PRODUCT_NAME=$(PRODUCT_NAME)",
 					"$(inherited)",
 				);
-				HEADER_SEARCH_PATHS = "${PROJECT_DIR}/Lilu.kext/Contents/Resources";
+				HEADER_SEARCH_PATHS = (
+					"${PROJECT_DIR}/Lilu.kext/Contents/Resources",
+					"$(SRCROOT)",
+				);
 				INFOPLIST_FILE = HibernationFixup/Info.plist;
 				LIBRARY_SEARCH_PATHS = (
 					"$(inherited)",
@@ -369,7 +382,7 @@
 				MODULE_NAME = as.lvs1974.HibernationFixup;
 				MODULE_START = "$(PRODUCT_NAME)_kern_start";
 				MODULE_STOP = "$(PRODUCT_NAME)_kern_stop";
-				MODULE_VERSION = 1.2.3;
+				MODULE_VERSION = 1.2.4;
 				OTHER_CFLAGS = (
 					"-mmmx",
 					"-msse",
@@ -403,7 +416,10 @@
 					"MODULE_VERSION=$(MODULE_VERSION)",
 					"PRODUCT_NAME=$(PRODUCT_NAME)",
 				);
-				HEADER_SEARCH_PATHS = "${PROJECT_DIR}/Lilu.kext/Contents/Resources";
+				HEADER_SEARCH_PATHS = (
+					"${PROJECT_DIR}/Lilu.kext/Contents/Resources",
+					"$(SRCROOT)",
+				);
 				INFOPLIST_FILE = HibernationFixup/Info.plist;
 				LIBRARY_SEARCH_PATHS = (
 					"$(inherited)",
@@ -414,7 +430,7 @@
 				MODULE_NAME = as.lvs1974.HibernationFixup;
 				MODULE_START = "$(PRODUCT_NAME)_kern_start";
 				MODULE_STOP = "$(PRODUCT_NAME)_kern_stop";
-				MODULE_VERSION = 1.2.3;
+				MODULE_VERSION = 1.2.4;
 				OTHER_CFLAGS = (
 					"-mmmx",
 					"-msse",
