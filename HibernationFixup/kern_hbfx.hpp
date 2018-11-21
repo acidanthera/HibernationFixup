@@ -10,6 +10,7 @@
 
 #include <Headers/kern_patcher.hpp>
 #include <Headers/kern_nvram.hpp>
+#include <IOKit/pwr_mgt/IOPMPowerSource.h>
 
 #define kIOHibernateStateKey            "IOHibernateState"
 #define kIOHibernateRTCVariablesKey     "IOHibernateRTCVariables"
@@ -122,6 +123,7 @@ private:
 	int progressState {ProcessingState::NothingReady};
 	
 	NVStorage nvstorage;
+	IOPMPowerSource *power_source {nullptr};
 };
 
 #endif /* kern_hbfx_hpp */

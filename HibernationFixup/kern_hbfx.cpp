@@ -5,7 +5,6 @@
 //  Copyright © 2017 lvs1974. All rights reserved.
 //
 
-#include <IOKit/pwr_mgt/IOPMPowerSource.h>
 #include <Library/LegacyIOService.h>
 #include "LegacyRootDomain.h"
 
@@ -158,22 +157,7 @@ bool HBFX::IOPMrootDomain_getHibernateSettings(IOPMrootDomain *that, unsigned in
 	if (!result)
 		SYSLOG("HBFX", "orgGetHibernateSettings returned false");
 	
-	IOPMPowerSource *power_source = nullptr;
-	
-	while (result && hibernateModePtr && OSDynamicCast(OSBoolean, that->getProperty(kAppleSleepDisabled)) == kOSBooleanFalse) {
-		auto matching = IOService::serviceMatching("IOPMPowerSource");
-		if (matching) {
-			power_source = OSDynamicCast(IOPMPowerSource, IOService::copyMatchingService(matching));
-			matching->release();
-			if (!power_source) {
-				SYSLOG("HBFX", "failed to get IOPMPowerSource");
-				break;
-			}
-		} else {
-			SYSLOG("HBFX", "failed to allocate IOPMPowerSource service matching");
-			break;
-		}
-		
+	while (callbackHBFX->power_source && result && hibernateModePtr && OSDynamicCast(OSBoolean, that->getProperty(kAppleSleepDisabled)) == kOSBooleanFalse) {
 		auto autoHibernateMode = ADDPR(hbfx_config).autoHibernateMode;
 		bool whenLidIsClosed = (autoHibernateMode & Configuration::WhenLidIsClosed);
 		bool whenExternalPowerIsDisconnected = (autoHibernateMode & Configuration::WhenExternalPowerIsDisconnected);
@@ -186,23 +170,23 @@ bool HBFX::IOPMrootDomain_getHibernateSettings(IOPMrootDomain *that, unsigned in
 			break;
 		}
 		
-		if (power_source->batteryInstalled()) {
-			if (whenExternalPowerIsDisconnected && power_source->externalConnected()) {
+		if (callbackHBFX->power_source->batteryInstalled()) {
+			if (whenExternalPowerIsDisconnected && callbackHBFX->power_source->externalConnected()) {
 				DBGLOG("HBFX", "Auto hibernate: external is connected, do not force to hibernate");
 				break;
 			}
 			
-			if (whenBatteryIsNotCharging && power_source->isCharging()) {
+			if (whenBatteryIsNotCharging && callbackHBFX->power_source->isCharging()) {
 				DBGLOG("HBFX", "Auto hibernate: battery is charging, do not force to hibernate");
 				break;
 			}
 			
-			if (whenBatteryIsAtWarnLevel && !power_source->atWarnLevel()) {
+			if (whenBatteryIsAtWarnLevel && !callbackHBFX->power_source->atWarnLevel()) {
 				DBGLOG("HBFX", "Auto hibernate: battery is not at warning level, do not force to hibernate");
 				break;
 			}
 			
-			if (whenBatteryAtCriticalLevel && !power_source->atCriticalLevel()) {
+			if (whenBatteryAtCriticalLevel && !callbackHBFX->power_source->atCriticalLevel()) {
 				DBGLOG("HBFX", "Auto hibernate: battery is not at critical level, do not force to hibernate");
 				break;
 			}
@@ -212,9 +196,6 @@ bool HBFX::IOPMrootDomain_getHibernateSettings(IOPMrootDomain *that, unsigned in
 		DBGLOG("HBFX", "Auto hibernate: force hibernate mode to 25");
 		break;
 	}
-	
-	if (power_source)
-		power_source->release();
 	
 	return result;
 }
@@ -327,11 +308,24 @@ void HBFX::processKernel(KernelPatcher &patcher)
 {
 	if ((ADDPR(hbfx_config).autoHibernateMode & Configuration::EnableAutoHibenation) && !(progressState & ProcessingState::KernelRouted))
 	{
-		KernelPatcher::RouteRequest requests[] = {
-			{ "__ZN14IOPMrootDomain20getHibernateSettingsEPjS0_S0_", IOPMrootDomain_getHibernateSettings, orgGetHibernateSettings },
-		    { "__ZN14IOPMrootDomain26setMaintenanceWakeCalendarEPK18IOPMCalendarStruct", IOPMrootDomain_setMaintenanceWakeCalendar, orgSetMaintenanceWakeCalendar }
-		};
-		patcher.routeMultiple(KernelPatcher::KernelID, requests);
+		auto matching = IOService::serviceMatching("IOPMPowerSource");
+		if (matching) {
+			power_source = OSDynamicCast(IOPMPowerSource, IOService::copyMatchingService(matching));
+			matching->release();
+			if (!power_source) {
+				SYSLOG("HBFX", "failed to get IOPMPowerSource");
+			}
+		} else {
+			SYSLOG("HBFX", "failed to allocate IOPMPowerSource service matching");
+		}
+		
+		if (power_source) {
+			KernelPatcher::RouteRequest requests[] = {
+				{ "__ZN14IOPMrootDomain20getHibernateSettingsEPjS0_S0_", IOPMrootDomain_getHibernateSettings, orgGetHibernateSettings },
+				{ "__ZN14IOPMrootDomain26setMaintenanceWakeCalendarEPK18IOPMCalendarStruct", IOPMrootDomain_setMaintenanceWakeCalendar, orgSetMaintenanceWakeCalendar }
+			};
+			patcher.routeMultiple(KernelPatcher::KernelID, requests);
+		}
 	}
 	
 	if (ADDPR(hbfx_config).dumpNvram == false && checkRTCExtendedMemory())
