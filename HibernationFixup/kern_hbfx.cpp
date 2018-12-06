@@ -52,10 +52,72 @@ enum {
 	kIOPCICommandInterruptDisable       = 0x0400
 };
 
-static const char *kextIOPCIFamilyPath[] { "/System/Library/Extensions/IOPCIFamily.kext/IOPCIFamily" };
+// System Sleep Types
+enum {
+	kIOPMSleepTypeInvalid                   = 0,
+	kIOPMSleepTypeAbortedSleep              = 1,
+	kIOPMSleepTypeNormalSleep               = 2,
+	kIOPMSleepTypeSafeSleep                 = 3,
+	kIOPMSleepTypeHibernate                 = 4,
+	kIOPMSleepTypeStandby                   = 5,
+	kIOPMSleepTypePowerOff                  = 6,
+	kIOPMSleepTypeDeepIdle                  = 7,
+	kIOPMSleepTypeLast                      = 8
+};
 
-static KernelPatcher::KextInfo kextIOPCIFamily {
-	"com.apple.iokit.IOPCIFamily", kextIOPCIFamilyPath, arrsize(kextIOPCIFamilyPath), {true}, {}, KernelPatcher::KextInfo::Unloaded
+enum {
+	kIOPMSleepReasonClamshell                   = 101,
+	kIOPMSleepReasonPowerButton                 = 102,
+	kIOPMSleepReasonSoftware                    = 103,
+	kIOPMSleepReasonOSSwitchHibernate           = 104,
+	kIOPMSleepReasonIdle                        = 105,
+	kIOPMSleepReasonLowPower                    = 106,
+	kIOPMSleepReasonThermalEmergency            = 107,
+	kIOPMSleepReasonMaintenance                 = 108,
+	kIOPMSleepReasonSleepServiceExit            = 109,
+	kIOPMSleepReasonDarkWakeThermalEmergency    = 110
+};
+
+// Sleep Factor Mask / Bits
+enum {
+	kIOPMSleepFactorSleepTimerWake          = 0x00000001ULL,
+	kIOPMSleepFactorLidOpen                 = 0x00000002ULL,
+	kIOPMSleepFactorACPower                 = 0x00000004ULL,
+	kIOPMSleepFactorBatteryLow              = 0x00000008ULL,
+	kIOPMSleepFactorStandbyNoDelay          = 0x00000010ULL,
+	kIOPMSleepFactorStandbyForced           = 0x00000020ULL,
+	kIOPMSleepFactorStandbyDisabled         = 0x00000040ULL,
+	kIOPMSleepFactorUSBExternalDevice       = 0x00000080ULL,
+	kIOPMSleepFactorBluetoothHIDDevice      = 0x00000100ULL,
+	kIOPMSleepFactorExternalMediaMounted    = 0x00000200ULL,
+	kIOPMSleepFactorThunderboltDevice       = 0x00000400ULL,
+	kIOPMSleepFactorRTCAlarmScheduled       = 0x00000800ULL,
+	kIOPMSleepFactorMagicPacketWakeEnabled  = 0x00001000ULL,
+	kIOPMSleepFactorHibernateForced         = 0x00010000ULL,
+	kIOPMSleepFactorAutoPowerOffDisabled    = 0x00020000ULL,
+	kIOPMSleepFactorAutoPowerOffForced      = 0x00040000ULL,
+	kIOPMSleepFactorExternalDisplay         = 0x00080000ULL,
+	kIOPMSleepFactorNetworkKeepAliveActive  = 0x00100000ULL,
+	kIOPMSleepFactorLocalUserActivity       = 0x00200000ULL,
+	kIOPMSleepFactorHibernateFailed         = 0x00400000ULL,
+	kIOPMSleepFactorThermalWarning          = 0x00800000ULL,
+	kIOPMSleepFactorDisplayCaptured         = 0x01000000ULL
+};
+
+// Sleep flags
+enum {
+	kIOPMSleepFlagHibernate         = 0x00000001,
+	kIOPMSleepFlagSleepTimerEnable  = 0x00000002
+};
+
+
+
+static const char *kextIOPCIFamilyPath[]   { "/System/Library/Extensions/IOPCIFamily.kext/IOPCIFamily" };
+static const char *kextX86PlatformPlugin[] { "/System/Library/Extensions/IOPlatformPluginFamily.kext/Contents/PlugIns/X86PlatformPlugin.kext/Contents/MacOS/X86PlatformPlugin" };
+
+static KernelPatcher::KextInfo kextList[] {
+	{"com.apple.iokit.IOPCIFamily",        kextIOPCIFamilyPath,   arrsize(kextIOPCIFamilyPath),   {true}, {}, KernelPatcher::KextInfo::Unloaded},
+	{"com.apple.driver.X86PlatformPlugin", kextX86PlatformPlugin, arrsize(kextX86PlatformPlugin), {true}, {}, KernelPatcher::KextInfo::Unloaded}
 };
 
 //==============================================================================
@@ -69,7 +131,7 @@ bool HBFX::init()
 		callbackHBFX->processKernel(patcher);
 	}, this);
 
-	lilu.onKextLoadForce(&kextIOPCIFamily, 1,
+	lilu.onKextLoadForce(kextList, arrsize(kextList),
 	[](void *user, KernelPatcher &patcher, size_t index, mach_vm_address_t address, size_t size) {
 		callbackHBFX->processKext(patcher, index, address, size);
 	}, this);
@@ -151,66 +213,59 @@ IOReturn HBFX::IOHibernateSystemSleep(void)
 
 //==============================================================================
 
-bool HBFX::IOPMrootDomain_getHibernateSettings(IOPMrootDomain *that, unsigned int *hibernateModePtr, unsigned int *hibernateFreeRatio, unsigned int *hibernateFreeTime)
+IOReturn HBFX::X86PlatformPlugin_sleepPolicyHandler(void * target, IOPMSystemSleepPolicyVariables * vars, IOPMSystemSleepParameters * params)
 {
-	bool result = FunctionCast(IOPMrootDomain_getHibernateSettings, callbackHBFX->orgGetHibernateSettings)(that, hibernateModePtr, hibernateFreeRatio, hibernateFreeTime);
-	if (!result)
-		SYSLOG("HBFX", "orgGetHibernateSettings returned false");
-	
-	while (callbackHBFX->power_source && result && hibernateModePtr && OSDynamicCast(OSBoolean, that->getProperty(kAppleSleepDisabled)) == kOSBooleanFalse) {
-		auto autoHibernateMode = ADDPR(hbfx_config).autoHibernateMode;
-		bool whenLidIsClosed = (autoHibernateMode & Configuration::WhenLidIsClosed);
-		bool whenExternalPowerIsDisconnected = (autoHibernateMode & Configuration::WhenExternalPowerIsDisconnected);
-		bool whenBatteryIsNotCharging = (autoHibernateMode & Configuration::WhenBatteryIsNotCharging);
-		bool whenBatteryIsAtWarnLevel = (autoHibernateMode & Configuration::WhenBatteryIsAtWarnLevel);
-		bool whenBatteryAtCriticalLevel = (autoHibernateMode & Configuration::WhenBatteryAtCriticalLevel);
-	
-		if (whenLidIsClosed && OSDynamicCast(OSBoolean, that->getProperty(kAppleClamshellStateKey)) != kOSBooleanTrue) {
-			DBGLOG("HBFX", "Auto hibernate: clamshell is open, do not force to hibernate");
-			break;
-		}
-		
-		if (callbackHBFX->power_source->batteryInstalled()) {
-			if (whenExternalPowerIsDisconnected && callbackHBFX->power_source->externalConnected()) {
-				DBGLOG("HBFX", "Auto hibernate: external is connected, do not force to hibernate");
-				break;
-			}
-			
-			if (whenBatteryIsNotCharging && callbackHBFX->power_source->isCharging()) {
-				DBGLOG("HBFX", "Auto hibernate: battery is charging, do not force to hibernate");
-				break;
-			}
-			
-			if (whenBatteryIsAtWarnLevel && !callbackHBFX->power_source->atWarnLevel()) {
-				DBGLOG("HBFX", "Auto hibernate: battery is not at warning level, do not force to hibernate");
-				break;
-			}
-			
-			if (whenBatteryAtCriticalLevel && !callbackHBFX->power_source->atCriticalLevel()) {
-				DBGLOG("HBFX", "Auto hibernate: battery is not at critical level, do not force to hibernate");
-				break;
-			}
-		}
-
-		*hibernateModePtr = 25;
-		DBGLOG("HBFX", "Auto hibernate: force hibernate mode to 25");
-		break;
-	}
-	
-	return result;
-}
-
-//==============================================================================
-
-IOReturn HBFX::IOPMrootDomain_setMaintenanceWakeCalendar(IOPMrootDomain *that, IOPMCalendarStruct *calendar)
-{
-	IOReturn result = FunctionCast(IOPMrootDomain_setMaintenanceWakeCalendar, callbackHBFX->orgSetMaintenanceWakeCalendar)(that, calendar);
+	DBGLOG("HBFX", "X86PlatformPlugin_sleepPolicyHandler is called");
+	IOReturn result = FunctionCast(X86PlatformPlugin_sleepPolicyHandler, callbackHBFX->orgSleepPolicyHandler)(target, vars, params);
 	if (result != KERN_SUCCESS)
 		SYSLOG("HBFX", "orgSetMaintenanceWakeCalendar returned error 0x%x", result);
-	else if (calendar != nullptr)
-	{
-		DBGLOG("HBFX", "Maintenance event was set to %02d.%02d.%04d  %02d:%02d:%02d, selector = %d",
-			   calendar->day, calendar->month, calendar->year, calendar->hour, calendar->minute, calendar->second, calendar->selector);
+	else {
+		DBGLOG("HBFX", "X86PlatformPlugin_sleepPolicyHandler sleepReason: %d, sleepPhase: %d, hibernateMode: %d, sleepType: %d",
+			   vars->sleepReason, vars->sleepPhase, vars->hibernateMode, params->sleepType);
+		while (params->sleepType == kIOPMSleepTypeDeepIdle && callbackHBFX->power_source)
+		{
+			auto autoHibernateMode = ADDPR(hbfx_config).autoHibernateMode;
+			bool whenLidIsClosed = (autoHibernateMode & Configuration::WhenLidIsClosed);
+			bool whenExternalPowerIsDisconnected = (autoHibernateMode & Configuration::WhenExternalPowerIsDisconnected);
+			bool whenBatteryIsNotCharging = (autoHibernateMode & Configuration::WhenBatteryIsNotCharging);
+			bool whenBatteryIsAtWarnLevel = (autoHibernateMode & Configuration::WhenBatteryIsAtWarnLevel);
+			bool whenBatteryAtCriticalLevel = (autoHibernateMode & Configuration::WhenBatteryAtCriticalLevel);
+	
+			if (whenLidIsClosed && OSDynamicCast(OSBoolean, IOService::getPMRootDomain()->getProperty(kAppleClamshellStateKey)) != kOSBooleanTrue) {
+				DBGLOG("HBFX", "Auto hibernate: clamshell is open, do not force to hibernate");
+				break;
+			}
+	
+			if (callbackHBFX->power_source->batteryInstalled()) {
+				if (whenExternalPowerIsDisconnected && callbackHBFX->power_source->externalConnected()) {
+					DBGLOG("HBFX", "Auto hibernate: external is connected, do not force to hibernate");
+					break;
+				}
+	
+				if (whenBatteryIsNotCharging && callbackHBFX->power_source->isCharging()) {
+					DBGLOG("HBFX", "Auto hibernate: battery is charging, do not force to hibernate");
+					break;
+				}
+	
+				if (whenBatteryIsAtWarnLevel && !callbackHBFX->power_source->atWarnLevel()) {
+					DBGLOG("HBFX", "Auto hibernate: battery is not at warning level, do not force to hibernate");
+					break;
+				}
+	
+				if (whenBatteryAtCriticalLevel && !callbackHBFX->power_source->atCriticalLevel()) {
+					DBGLOG("HBFX", "Auto hibernate: battery is not at critical level, do not force to hibernate");
+					break;
+				}
+			}
+	
+			vars->sleepFactors = kIOPMSleepFactorStandbyForced | kIOPMSleepFactorStandbyNoDelay;
+			vars->sleepReason  = kIOPMSleepReasonLowPower;
+			params->sleepType  = kIOPMSleepTypeStandby;
+			params->sleepFlags = kIOPMSleepFlagHibernate;
+			
+			DBGLOG("HBFX", "Auto hibernate: force hibernate...");
+			break;
+		}
 	}
 	
 	return result;
@@ -305,29 +360,7 @@ void HBFX::extendedConfigWrite16(IOService *that, UInt64 offset, UInt16 data)
 //==============================================================================
 
 void HBFX::processKernel(KernelPatcher &patcher)
-{
-	if ((ADDPR(hbfx_config).autoHibernateMode & Configuration::EnableAutoHibenation) && !(progressState & ProcessingState::KernelRouted))
-	{
-		auto matching = IOService::serviceMatching("IOPMPowerSource");
-		if (matching) {
-			power_source = OSDynamicCast(IOPMPowerSource, IOService::copyMatchingService(matching));
-			matching->release();
-			if (!power_source) {
-				SYSLOG("HBFX", "failed to get IOPMPowerSource");
-			}
-		} else {
-			SYSLOG("HBFX", "failed to allocate IOPMPowerSource service matching");
-		}
-		
-		if (power_source) {
-			KernelPatcher::RouteRequest requests[] = {
-				{ "__ZN14IOPMrootDomain20getHibernateSettingsEPjS0_S0_", IOPMrootDomain_getHibernateSettings, orgGetHibernateSettings },
-				{ "__ZN14IOPMrootDomain26setMaintenanceWakeCalendarEPK18IOPMCalendarStruct", IOPMrootDomain_setMaintenanceWakeCalendar, orgSetMaintenanceWakeCalendar }
-			};
-			patcher.routeMultiple(KernelPatcher::KernelID, requests);
-		}
-	}
-	
+{	
 	if (ADDPR(hbfx_config).dumpNvram == false && checkRTCExtendedMemory())
 	{
 		DBGLOG("HBFX", "all kernel patches will be skipped since the second bank of RTC memory is available");
@@ -413,16 +446,46 @@ void HBFX::processKext(KernelPatcher &patcher, size_t index, mach_vm_address_t a
 	
 	if (progressState != ProcessingState::EverythingDone)
 	{
-		if (ADDPR(hbfx_config).patchPCIFamily && kextIOPCIFamily.loadIndex == index &&
-			!(progressState & ProcessingState::IOPCIFamilyRouted))
+		bool autoHibernateModeOn = (ADDPR(hbfx_config).autoHibernateMode & Configuration::EnableAutoHibenation);
+		
+		for (size_t i = 0; i < arrsize(kextList); i++)
 		{
-			KernelPatcher::RouteRequest requests[] {
-				{"__ZN11IOPCIBridge19restoreMachineStateEjP11IOPCIDevice", restoreMachineState, orgRestoreMachineState},
-				{"__ZN11IOPCIDevice21extendedConfigWrite16Eyt", extendedConfigWrite16, orgExtendedConfigWrite16},
-			};
+			if (kextList[i].loadIndex == index)
+			{
+				if (ADDPR(hbfx_config).patchPCIFamily && i == 0 && !(progressState & ProcessingState::IOPCIFamilyRouted))
+				{
+					KernelPatcher::RouteRequest requests[] {
+						{"__ZN11IOPCIBridge19restoreMachineStateEjP11IOPCIDevice", restoreMachineState, orgRestoreMachineState},
+						{"__ZN11IOPCIDevice21extendedConfigWrite16Eyt", extendedConfigWrite16, orgExtendedConfigWrite16},
+					};
 
-			patcher.routeMultiple(index, requests, address, size);
-			progressState |= ProcessingState::IOPCIFamilyRouted;
+					patcher.routeMultiple(index, requests, address, size);
+					progressState |= ProcessingState::IOPCIFamilyRouted;
+				}
+				
+				if (autoHibernateModeOn && i == 1 && !(progressState & ProcessingState::X86PluginRouted))
+				{
+					auto matching = IOService::serviceMatching("IOPMPowerSource");
+					if (matching) {
+						power_source = OSDynamicCast(IOPMPowerSource, IOService::copyMatchingService(matching));
+						matching->release();
+						if (!power_source) {
+							SYSLOG("HBFX", "failed to get IOPMPowerSource");
+						}
+					} else {
+						SYSLOG("HBFX", "failed to allocate IOPMPowerSource service matching");
+					}
+					
+					if (power_source) {
+						KernelPatcher::RouteRequest requests[] {
+							{"__ZN17X86PlatformPlugin18sleepPolicyHandlerEPK30IOPMSystemSleepPolicyVariablesP25IOPMSystemSleepParameters", X86PlatformPlugin_sleepPolicyHandler, orgSleepPolicyHandler}
+						};
+						
+						patcher.routeMultiple(index, requests, address, size);
+						progressState |= ProcessingState::X86PluginRouted;
+					}
+				}
+		    }
 		}
 	}
 }
