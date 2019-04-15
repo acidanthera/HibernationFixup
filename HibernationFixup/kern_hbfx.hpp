@@ -12,57 +12,7 @@
 #include <Headers/kern_nvram.hpp>
 #include <IOKit/pwr_mgt/IOPMPowerSource.h>
 
-#define kIOHibernateStateKey            "IOHibernateState"
-#define kIOHibernateRTCVariablesKey     "IOHibernateRTCVariables"
-#define kIOHibernateSMCVariablesKey     "IOHibernateSMCVariables"
-#define kFakeSMCHBKB                    "fakesmc-key-HBKP-ch8*"
-#define kIOHibernateFileKey             "Hibernate File"
-#define kBoot0082Key                    "Boot0082"
-#define kBootNextKey                    "BootNext"
-#define kGlobalBoot0082Key              NVRAM_PREFIX(NVRAM_GLOBAL_GUID, kBoot0082Key)
-#define kGlobalBootNextKey              NVRAM_PREFIX(NVRAM_GLOBAL_GUID, kBootNextKey)
-
-#define FILE_NVRAM_NAME                 "/nvram.plist"
-
-#define kAppleClamshellStateKey         "AppleClamshellState"
-#define kAppleClamshellCausesSleepKey   "AppleClamshellCausesSleep"
-#define kAppleSleepDisabled				"SleepDisabled"
-
-
-struct IOPMSystemSleepPolicyVariables
-{
-	uint32_t    signature;                  // kIOPMSystemSleepPolicySignature
-	uint32_t    version;                    // kIOPMSystemSleepPolicyVersion
-	
-	uint64_t    currentCapability;          // current system capability bits
-	uint64_t    highestCapability;          // highest system capability bits
-	
-	uint64_t    sleepFactors;               // sleep factor bits
-	uint32_t    sleepReason;                // kIOPMSleepReason*
-	uint32_t    sleepPhase;                 // identify the sleep phase
-	uint32_t    hibernateMode;              // current hibernate mode
-	
-	uint32_t    standbyDelay;               // standby delay in seconds
-	uint32_t    standbyTimer;               // standby timer in seconds
-	uint32_t    poweroffDelay;              // auto-poweroff delay in seconds
-	uint32_t    scheduledAlarms;            // bitmask of scheduled alarm types
-	uint32_t    poweroffTimer;              // auto-poweroff timer in seconds
-	
-	uint32_t    reserved[49];               // pad sizeof 256 bytes
-};
-
-struct IOPMSystemSleepParameters
-{
-	uint16_t    version;
-	uint16_t    reserved1;
-	uint32_t    sleepType;
-	uint32_t    sleepFlags;
-	uint32_t    ecWakeEvents;
-	uint32_t    ecWakeTimer;
-	uint32_t    ecPoweroffTimer;
-	uint32_t    reserved2[10];
-} __attribute__((packed));
-
+#include "osx_defines.h"
 
 class HBFX {
 public:
@@ -102,6 +52,7 @@ private:
 	 *  Hooked methods / callbacks
 	 */
 	static IOReturn     IOHibernateSystemSleep(void);
+	static IOReturn     setMaintenanceWakeCalendar(IOPMrootDomain* that, IOPMCalendarStruct * calendar);
 	static IOReturn     X86PlatformPlugin_sleepPolicyHandler(void * target, IOPMSystemSleepPolicyVariables * vars, IOPMSystemSleepParameters * params);
 	
 	static int          packA(char *inbuf, uint32_t length, uint32_t buflen);
@@ -112,6 +63,7 @@ private:
 	 *  Trampolines for original method invocations
 	 */
 	mach_vm_address_t orgIOHibernateSystemSleep {};
+	mach_vm_address_t orgSetMaintenanceWakeCalendar {};
 	mach_vm_address_t orgSleepPolicyHandler {};
 	mach_vm_address_t orgPackA {};
 	mach_vm_address_t orgRestoreMachineState {};
@@ -142,6 +94,8 @@ private:
 	t_ml_set_interrupts_enabled ml_set_interrupts_enabled {nullptr};
 	
 	bool    correct_pci_config_command {false};
+	
+	uint32_t  latestStandbyDelay {0};
 	
 	/**
 	 *  Current progress mask

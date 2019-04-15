@@ -10,6 +10,7 @@
 		1C748C2D1C21952C0024EED2 /* kern_start.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 1C748C2C1C21952C0024EED2 /* kern_start.cpp */; };
 		CE405EC91E49DD9700AA0B3D /* libkmod.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CE405EC71E49DD7100AA0B3D /* libkmod.a */; };
 		CE405ED91E4A080700AA0B3D /* plugin_start.cpp in Sources */ = {isa = PBXBuildFile; fileRef = CE405ED81E4A080700AA0B3D /* plugin_start.cpp */; };
+		F65E89E0224C10B400D7507C /* gmtime.cpp in Sources */ = {isa = PBXBuildFile; fileRef = F65E89DF224C10B400D7507C /* gmtime.cpp */; };
 		F67C73C61E68AD890061CB0A /* kern_config.hpp in Headers */ = {isa = PBXBuildFile; fileRef = F67C73C51E68AD890061CB0A /* kern_config.hpp */; };
 		F6C535E81E60963800A3A34B /* kern_hbfx.cpp in Sources */ = {isa = PBXBuildFile; fileRef = F6C535E61E60963800A3A34B /* kern_hbfx.cpp */; };
 		F6C535E91E60963800A3A34B /* kern_hbfx.hpp in Headers */ = {isa = PBXBuildFile; fileRef = F6C535E71E60963800A3A34B /* kern_hbfx.hpp */; };
@@ -50,6 +51,9 @@
 		CE405ED21E49F9FC00AA0B3D /* kern_api.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = kern_api.hpp; sourceTree = "<group>"; };
 		CE405ED81E4A080700AA0B3D /* plugin_start.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = plugin_start.cpp; sourceTree = "<group>"; };
 		CE405EDA1E4A080F00AA0B3D /* plugin_start.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = plugin_start.hpp; sourceTree = "<group>"; };
+		F65E89DE224C102E00D7507C /* osx_defines.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = osx_defines.h; sourceTree = "<group>"; };
+		F65E89DF224C10B400D7507C /* gmtime.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = gmtime.cpp; sourceTree = "<group>"; };
+		F65E89E1224C11E200D7507C /* gmtime.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = gmtime.h; sourceTree = "<group>"; };
 		F663E1A121937ADC00E72622 /* IOKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = IOKit.framework; path = System/Library/Frameworks/IOKit.framework; sourceTree = SDKROOT; };
 		F67C73C51E68AD890061CB0A /* kern_config.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; path = kern_config.hpp; sourceTree = "<group>"; };
 		F6C535E61E60963800A3A34B /* kern_hbfx.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = kern_hbfx.cpp; sourceTree = "<group>"; };
@@ -96,6 +100,9 @@
 				F6C535E71E60963800A3A34B /* kern_hbfx.hpp */,
 				1C748C2C1C21952C0024EED2 /* kern_start.cpp */,
 				1C748C2E1C21952C0024EED2 /* Info.plist */,
+				F65E89DE224C102E00D7507C /* osx_defines.h */,
+				F65E89DF224C10B400D7507C /* gmtime.cpp */,
+				F65E89E1224C11E200D7507C /* gmtime.h */,
 			);
 			path = HibernationFixup;
 			sourceTree = "<group>";
@@ -212,6 +219,7 @@
 			developmentRegion = English;
 			hasScannedForEncodings = 0;
 			knownRegions = (
+				English,
 				en,
 			);
 			mainGroup = 1C748C1D1C21952C0024EED2;
@@ -258,6 +266,7 @@
 			files = (
 				CE405ED91E4A080700AA0B3D /* plugin_start.cpp in Sources */,
 				F6C535E81E60963800A3A34B /* kern_hbfx.cpp in Sources */,
+				F65E89E0224C10B400D7507C /* gmtime.cpp in Sources */,
 				1C748C2D1C21952C0024EED2 /* kern_start.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -382,7 +391,7 @@
 				MODULE_NAME = as.lvs1974.HibernationFixup;
 				MODULE_START = "$(PRODUCT_NAME)_kern_start";
 				MODULE_STOP = "$(PRODUCT_NAME)_kern_stop";
-				MODULE_VERSION = 1.2.4;
+				MODULE_VERSION = 1.2.5;
 				OTHER_CFLAGS = (
 					"-mmmx",
 					"-msse",
@@ -430,7 +439,7 @@
 				MODULE_NAME = as.lvs1974.HibernationFixup;
 				MODULE_START = "$(PRODUCT_NAME)_kern_start";
 				MODULE_STOP = "$(PRODUCT_NAME)_kern_stop";
-				MODULE_VERSION = 1.2.4;
+				MODULE_VERSION = 1.2.5;
 				OTHER_CFLAGS = (
 					"-mmmx",
 					"-msse",

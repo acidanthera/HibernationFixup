@@ -1,5 +1,8 @@
 HibernationFixup Changelog
 ============================
+#### v1.2.5
+- Improve auto-hibernate feature: modify next wake time to currentTime + standbyDelay
+
 #### v1.2.4
 - New feature:  forces hibernate mode depending on specified factors (auto hibernate modes)
 

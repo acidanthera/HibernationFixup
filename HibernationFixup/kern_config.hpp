@@ -58,7 +58,19 @@ public:
 		// Auto hibernation can happen when battery is at warning level (osx is responsible for this level)
 		WhenBatteryIsAtWarnLevel        = 16,
 		// Auto hibernation can happen when battery is at critical level (osx is responsible for this level)
-		WhenBatteryAtCriticalLevel      = 32
+		WhenBatteryAtCriticalLevel      = 32,
+		// Modify next wake time to currentTime + standbyDelay
+		CorrectWakeTime					= 64,
+		// Reserver for future
+		Reserverd						= 128,
+		
+		// next 4 bits are used to specify minimal capacity percent remaining value when hibernation will be forced
+		// can be used together with WhenBatteryIsAtWarnLevel or WhenBatteryAtCriticalLevel, when IOPMPowerSource cannot detect
+		// warning or critical battery level
+		RemainCapacityBit1				= 256,
+		RemainCapacityBit2				= 512,
+		RemainCapacityBit3				= 1024,
+		RemainCapacityBit4				= 2048
 	};
 	
 	int autoHibernateMode {0};

@@ -18,99 +18,14 @@
 #include "kern_config.hpp"
 #include "kern_hbfx.hpp"
 
+#include <kern/clock.h>
+#include "gmtime.h"
+
+
+#define FILE_NVRAM_NAME                 "/nvram.plist"
+
 // Only used in apple-driven callbacks
 static HBFX *callbackHBFX = nullptr;
-
-// gIOHibernateState, kIOHibernateStateKey
-enum
-{
-	kIOHibernateStateInactive            = 0,
-	kIOHibernateStateHibernating         = 1,	/* writing image */
-	kIOHibernateStateWakingFromHibernate = 2	/* booted and restored image */
-};
-
-enum
-{
-	kMachineRestoreBridges      = 0x00000001,
-	kMachineRestoreEarlyDevices = 0x00000002,
-	kMachineRestoreDehibernate  = 0x00000004,
-	kMachineRestoreTunnels      = 0x00000008,
-};
-
-/* Command register definitions */
-enum {
-	kIOPCICommandIOSpace                = 0x0001,
-	kIOPCICommandMemorySpace            = 0x0002,
-	kIOPCICommandBusMaster              = 0x0004,
-	kIOPCICommandSpecialCycles          = 0x0008,
-	kIOPCICommandMemWrInvalidate        = 0x0010,
-	kIOPCICommandPaletteSnoop           = 0x0020,
-	kIOPCICommandParityError            = 0x0040,
-	kIOPCICommandAddressStepping        = 0x0080,
-	kIOPCICommandSERR                   = 0x0100,
-	kIOPCICommandFastBack2Back          = 0x0200,
-	kIOPCICommandInterruptDisable       = 0x0400
-};
-
-// System Sleep Types
-enum {
-	kIOPMSleepTypeInvalid                   = 0,
-	kIOPMSleepTypeAbortedSleep              = 1,
-	kIOPMSleepTypeNormalSleep               = 2,
-	kIOPMSleepTypeSafeSleep                 = 3,
-	kIOPMSleepTypeHibernate                 = 4,
-	kIOPMSleepTypeStandby                   = 5,
-	kIOPMSleepTypePowerOff                  = 6,
-	kIOPMSleepTypeDeepIdle                  = 7,
-	kIOPMSleepTypeLast                      = 8
-};
-
-enum {
-	kIOPMSleepReasonClamshell                   = 101,
-	kIOPMSleepReasonPowerButton                 = 102,
-	kIOPMSleepReasonSoftware                    = 103,
-	kIOPMSleepReasonOSSwitchHibernate           = 104,
-	kIOPMSleepReasonIdle                        = 105,
-	kIOPMSleepReasonLowPower                    = 106,
-	kIOPMSleepReasonThermalEmergency            = 107,
-	kIOPMSleepReasonMaintenance                 = 108,
-	kIOPMSleepReasonSleepServiceExit            = 109,
-	kIOPMSleepReasonDarkWakeThermalEmergency    = 110
-};
-
-// Sleep Factor Mask / Bits
-enum {
-	kIOPMSleepFactorSleepTimerWake          = 0x00000001ULL,
-	kIOPMSleepFactorLidOpen                 = 0x00000002ULL,
-	kIOPMSleepFactorACPower                 = 0x00000004ULL,
-	kIOPMSleepFactorBatteryLow              = 0x00000008ULL,
-	kIOPMSleepFactorStandbyNoDelay          = 0x00000010ULL,
-	kIOPMSleepFactorStandbyForced           = 0x00000020ULL,
-	kIOPMSleepFactorStandbyDisabled         = 0x00000040ULL,
-	kIOPMSleepFactorUSBExternalDevice       = 0x00000080ULL,
-	kIOPMSleepFactorBluetoothHIDDevice      = 0x00000100ULL,
-	kIOPMSleepFactorExternalMediaMounted    = 0x00000200ULL,
-	kIOPMSleepFactorThunderboltDevice       = 0x00000400ULL,
-	kIOPMSleepFactorRTCAlarmScheduled       = 0x00000800ULL,
-	kIOPMSleepFactorMagicPacketWakeEnabled  = 0x00001000ULL,
-	kIOPMSleepFactorHibernateForced         = 0x00010000ULL,
-	kIOPMSleepFactorAutoPowerOffDisabled    = 0x00020000ULL,
-	kIOPMSleepFactorAutoPowerOffForced      = 0x00040000ULL,
-	kIOPMSleepFactorExternalDisplay         = 0x00080000ULL,
-	kIOPMSleepFactorNetworkKeepAliveActive  = 0x00100000ULL,
-	kIOPMSleepFactorLocalUserActivity       = 0x00200000ULL,
-	kIOPMSleepFactorHibernateFailed         = 0x00400000ULL,
-	kIOPMSleepFactorThermalWarning          = 0x00800000ULL,
-	kIOPMSleepFactorDisplayCaptured         = 0x01000000ULL
-};
-
-// Sleep flags
-enum {
-	kIOPMSleepFlagHibernate         = 0x00000001,
-	kIOPMSleepFlagSleepTimerEnable  = 0x00000002
-};
-
-
 
 static const char *kextIOPCIFamilyPath[]   { "/System/Library/Extensions/IOPCIFamily.kext/IOPCIFamily" };
 static const char *kextX86PlatformPlugin[] { "/System/Library/Extensions/IOPlatformPluginFamily.kext/Contents/PlugIns/X86PlatformPlugin.kext/Contents/MacOS/X86PlatformPlugin" };
@@ -135,6 +50,7 @@ bool HBFX::init()
 	[](void *user, KernelPatcher &patcher, size_t index, mach_vm_address_t address, size_t size) {
 		callbackHBFX->processKext(patcher, index, address, size);
 	}, this);
+
 
 	return true;
 }
@@ -211,6 +127,34 @@ IOReturn HBFX::IOHibernateSystemSleep(void)
 	return result;
 }
 
+
+//==============================================================================
+
+IOReturn HBFX::setMaintenanceWakeCalendar(IOPMrootDomain* that, IOPMCalendarStruct * calendar)
+{
+	DBGLOG("HBFX", "Calendar time %02d.%02d.%04d %02d:%02d:%02d, selector: %d", calendar->day, calendar->month, calendar->year,
+		   calendar->hour, calendar->minute, calendar->second, calendar->selector);
+	
+	if (calendar->selector == kPMCalendarTypeSleepService && callbackHBFX->latestStandbyDelay != 0)
+	{
+		struct tm tm;
+		struct timeval tv;
+		microtime(&tv);
+		
+		gmtime_r(tv.tv_sec, &tm);
+		DBGLOG("HBFX", "Current time: %02d.%02d.%04d %02d:%02d:%02d", tm.tm_mday, tm.tm_mon, tm.tm_year, tm.tm_hour, tm.tm_min, tm.tm_sec);
+		
+		tv.tv_sec += callbackHBFX->latestStandbyDelay;
+		gmtime_r(tv.tv_sec, &tm);
+		DBGLOG("HBFX", "Postpone wake to: %02d.%02d.%04d %02d:%02d:%02d", tm.tm_mday, tm.tm_mon, tm.tm_year, tm.tm_hour, tm.tm_min, tm.tm_sec);
+		
+		*calendar = { static_cast<UInt32>(tm.tm_year), static_cast<UInt8>(tm.tm_mon), static_cast<UInt8>(tm.tm_mday),
+			static_cast<UInt8>(tm.tm_hour), static_cast<UInt8>(tm.tm_min), static_cast<UInt8>(tm.tm_sec), kPMCalendarTypeSleepService };
+	}
+	
+	return FunctionCast(setMaintenanceWakeCalendar, callbackHBFX->orgSetMaintenanceWakeCalendar)(that, calendar);
+}
+
 //==============================================================================
 
 IOReturn HBFX::X86PlatformPlugin_sleepPolicyHandler(void * target, IOPMSystemSleepPolicyVariables * vars, IOPMSystemSleepParameters * params)
@@ -218,10 +162,13 @@ IOReturn HBFX::X86PlatformPlugin_sleepPolicyHandler(void * target, IOPMSystemSle
 	DBGLOG("HBFX", "X86PlatformPlugin_sleepPolicyHandler is called");
 	IOReturn result = FunctionCast(X86PlatformPlugin_sleepPolicyHandler, callbackHBFX->orgSleepPolicyHandler)(target, vars, params);
 	if (result != KERN_SUCCESS)
-		SYSLOG("HBFX", "orgSetMaintenanceWakeCalendar returned error 0x%x", result);
+		SYSLOG("HBFX", "orgSleepPolicyHandler returned error 0x%x", result);
 	else {
 		DBGLOG("HBFX", "X86PlatformPlugin_sleepPolicyHandler sleepReason: %d, sleepPhase: %d, hibernateMode: %d, sleepType: %d",
 			   vars->sleepReason, vars->sleepPhase, vars->hibernateMode, params->sleepType);
+		DBGLOG("HBFX", "X86PlatformPlugin_sleepPolicyHandler standbyDelay: %d, standbyTimer: %d, poweroffDelay: %d, poweroffTimer: %d",
+			   vars->standbyDelay, vars->standbyTimer, vars->poweroffDelay, vars->poweroffTimer);
+		DBGLOG("HBFX", "X86PlatformPlugin_sleepPolicyHandler ecWakeTimer: %d, ecPoweroffTimer: %d", params->ecWakeTimer, params->ecPoweroffTimer);
 		while (params->sleepType == kIOPMSleepTypeDeepIdle && callbackHBFX->power_source)
 		{
 			auto autoHibernateMode = ADDPR(hbfx_config).autoHibernateMode;
@@ -230,11 +177,10 @@ IOReturn HBFX::X86PlatformPlugin_sleepPolicyHandler(void * target, IOPMSystemSle
 			bool whenBatteryIsNotCharging = (autoHibernateMode & Configuration::WhenBatteryIsNotCharging);
 			bool whenBatteryIsAtWarnLevel = (autoHibernateMode & Configuration::WhenBatteryIsAtWarnLevel);
 			bool whenBatteryAtCriticalLevel = (autoHibernateMode & Configuration::WhenBatteryAtCriticalLevel);
-	
-			if (whenLidIsClosed && OSDynamicCast(OSBoolean, IOService::getPMRootDomain()->getProperty(kAppleClamshellStateKey)) != kOSBooleanTrue) {
-				DBGLOG("HBFX", "Auto hibernate: clamshell is open, do not force to hibernate");
-				break;
-			}
+			int  minimalRemainingCapacity = ((autoHibernateMode & 0xF00) >> 8);
+			
+			callbackHBFX->latestStandbyDelay = vars->standbyDelay;
+			bool forceHibernate = false;
 	
 			if (callbackHBFX->power_source->batteryInstalled()) {
 				if (whenExternalPowerIsDisconnected && callbackHBFX->power_source->externalConnected()) {
@@ -246,16 +192,34 @@ IOReturn HBFX::X86PlatformPlugin_sleepPolicyHandler(void * target, IOPMSystemSle
 					DBGLOG("HBFX", "Auto hibernate: battery is charging, do not force to hibernate");
 					break;
 				}
-	
-				if (whenBatteryIsAtWarnLevel && !callbackHBFX->power_source->atWarnLevel()) {
-					DBGLOG("HBFX", "Auto hibernate: battery is not at warning level, do not force to hibernate");
-					break;
+				
+				if (!callbackHBFX->power_source->isCharging())
+				{
+					DBGLOG("HBFX", "Auto hibernate: warning level = %d, critical level = %d, capacity remaining = %d, minimal capaity = %d",
+						   callbackHBFX->power_source->atWarnLevel(), callbackHBFX->power_source->atCriticalLevel(),
+						   callbackHBFX->power_source->capacityPercentRemaining(), minimalRemainingCapacity);
+					if (whenBatteryIsAtWarnLevel && callbackHBFX->power_source->atWarnLevel()) {
+						DBGLOG("HBFX", "Auto hibernate: Battery is at warning level, capacity remaining: %d, force to hibernate", callbackHBFX->power_source->capacityPercentRemaining());
+						forceHibernate = true;
+					}
+		
+					if (whenBatteryAtCriticalLevel && callbackHBFX->power_source->atCriticalLevel()) {
+						DBGLOG("HBFX", "Auto hibernate: battery is at critical level, capacity remaining: %d, force to hibernate", callbackHBFX->power_source->capacityPercentRemaining());
+						forceHibernate = true;
+					}
+					
+					if (!forceHibernate && (whenBatteryIsAtWarnLevel || whenBatteryAtCriticalLevel) && minimalRemainingCapacity != 0 &&
+						callbackHBFX->power_source->capacityPercentRemaining() <= minimalRemainingCapacity)
+					{
+						DBGLOG("HBFX", "Auto hibernate: capacity remaining: %d less than minimal: %d, force to hibernate", callbackHBFX->power_source->capacityPercentRemaining());
+						forceHibernate = true;
+					}
 				}
-	
-				if (whenBatteryAtCriticalLevel && !callbackHBFX->power_source->atCriticalLevel()) {
-					DBGLOG("HBFX", "Auto hibernate: battery is not at critical level, do not force to hibernate");
-					break;
-				}
+			}
+			
+			if (!forceHibernate && whenLidIsClosed && OSDynamicCast(OSBoolean, IOService::getPMRootDomain()->getProperty(kAppleClamshellStateKey)) != kOSBooleanTrue) {
+				DBGLOG("HBFX", "Auto hibernate: clamshell is open, do not force to hibernate");
+				break;
 			}
 	
 			vars->sleepFactors = kIOPMSleepFactorStandbyForced | kIOPMSleepFactorStandbyNoDelay;
@@ -267,7 +231,7 @@ IOReturn HBFX::X86PlatformPlugin_sleepPolicyHandler(void * target, IOPMSystemSle
 			break;
 		}
 	}
-	
+
 	return result;
 }
 
@@ -360,73 +324,83 @@ void HBFX::extendedConfigWrite16(IOService *that, UInt64 offset, UInt16 data)
 //==============================================================================
 
 void HBFX::processKernel(KernelPatcher &patcher)
-{	
-	if (ADDPR(hbfx_config).dumpNvram == false && checkRTCExtendedMemory())
+{
+	bool auto_hibernate_mode_on = (ADDPR(hbfx_config).autoHibernateMode & Configuration::EnableAutoHibenation) &&
+								  (ADDPR(hbfx_config).autoHibernateMode & Configuration::CorrectWakeTime);
+	bool nvram_patches_required = (ADDPR(hbfx_config).dumpNvram == true || !checkRTCExtendedMemory());
+	if (!nvram_patches_required)
 	{
-		DBGLOG("HBFX", "all kernel patches will be skipped since the second bank of RTC memory is available");
-		return;
+		DBGLOG("HBFX", "all nvram kernel patches will be skipped since the second bank of RTC memory is available");
+		if (!auto_hibernate_mode_on)
+			return;
 	}
-	
-	if (!initialize_nvstorage())
-		return;
 	
 	if (!(progressState & ProcessingState::KernelRouted))
 	{
-		KernelPatcher::RouteRequest request { "_IOHibernateSystemSleep", IOHibernateSystemSleep, orgIOHibernateSystemSleep };
-		patcher.routeMultiple(KernelPatcher::KernelID, &request, 1);
-		
-		ml_at_interrupt_context = reinterpret_cast<t_ml_at_interrupt_context>(patcher.solveSymbol(KernelPatcher::KernelID, "_ml_at_interrupt_context"));
-		if (!ml_at_interrupt_context)
-		{
-			SYSLOG("HBFX", "failed to resolve _ml_at_interrupt_context %d", patcher.getError());
-			patcher.clearError();
+		if (auto_hibernate_mode_on) {
+			KernelPatcher::RouteRequest request {"__ZN14IOPMrootDomain26setMaintenanceWakeCalendarEPK18IOPMCalendarStruct", setMaintenanceWakeCalendar, orgSetMaintenanceWakeCalendar};
+			if (!patcher.routeMultiple(KernelPatcher::KernelID, &request, 1))
+				SYSLOG("HBFX", "patcher.routeMultiple for %s is failed with error %d", request.symbol, patcher.getError());
 		}
 		
-		ml_get_interrupts_enabled = reinterpret_cast<t_ml_get_interrupts_enabled>(patcher.solveSymbol(KernelPatcher::KernelID, "_ml_get_interrupts_enabled"));
-		if (!ml_get_interrupts_enabled)
-		{
-			SYSLOG("HBFX", "failed to resolve _ml_get_interrupts_enabled %d", patcher.getError());
-			patcher.clearError();
-		}
+		if (nvram_patches_required && initialize_nvstorage()) {
+			KernelPatcher::RouteRequest request {"_IOHibernateSystemSleep", IOHibernateSystemSleep, orgIOHibernateSystemSleep};
+			if (!patcher.routeMultiple(KernelPatcher::KernelID, &request, 1))
+				SYSLOG("HBFX", "patcher.routeMultiple for %s is failed with error %d", request.symbol, patcher.getError());
 
-		ml_set_interrupts_enabled = reinterpret_cast<t_ml_set_interrupts_enabled>(patcher.solveSymbol(KernelPatcher::KernelID, "_ml_set_interrupts_enabled"));
-		if (!ml_set_interrupts_enabled)
-		{
-			SYSLOG("HBFX", "failed to resolve _ml_set_interrupts_enabled %d", patcher.getError());
-			patcher.clearError();
-		}
-
-		if (ADDPR(hbfx_config).dumpNvram)
-		{
-			sync = reinterpret_cast<t_sync>(patcher.solveSymbol(KernelPatcher::KernelID, "_sync"));
-			if (!sync) {
-				SYSLOG("HBFX", "failed to resolve _sync %d", patcher.getError());
-				patcher.clearError();
-			}
-			
-			preemption_enabled = reinterpret_cast<t_preemption_enabled>(patcher.solveSymbol(KernelPatcher::KernelID, "_preemption_enabled"));
-			if (!preemption_enabled) {
-				SYSLOG("HBFX", "failed to resolve _preemption_enabled %d", patcher.getError());
-				patcher.clearError();
-			}
-			
-			enable_preemption = reinterpret_cast<t_enable_preemption>(patcher.solveSymbol(KernelPatcher::KernelID, "__enable_preemption"));
-			if (!enable_preemption) {
-				SYSLOG("HBFX", "failed to resolve __enable_preemption %d", patcher.getError());
-				patcher.clearError();
-			}
-			
-			disable_preemption = reinterpret_cast<t_disable_preemption>(patcher.solveSymbol(KernelPatcher::KernelID, "__disable_preemption"));
-			if (!disable_preemption) {
-				SYSLOG("HBFX", "failed to resolve __disable_preemption %d", patcher.getError());
-				patcher.clearError();
-			}
-			
-			if (sync && preemption_enabled && enable_preemption && disable_preemption && ml_at_interrupt_context &&
-				ml_get_interrupts_enabled && ml_set_interrupts_enabled)
+			ml_at_interrupt_context = reinterpret_cast<t_ml_at_interrupt_context>(patcher.solveSymbol(KernelPatcher::KernelID, "_ml_at_interrupt_context"));
+			if (!ml_at_interrupt_context)
 			{
-				KernelPatcher::RouteRequest request {"_packA", packA, orgPackA};
-				patcher.routeMultiple(KernelPatcher::KernelID, &request, 1);
+				SYSLOG("HBFX", "failed to resolve _ml_at_interrupt_context %d", patcher.getError());
+				patcher.clearError();
+			}
+			
+			ml_get_interrupts_enabled = reinterpret_cast<t_ml_get_interrupts_enabled>(patcher.solveSymbol(KernelPatcher::KernelID, "_ml_get_interrupts_enabled"));
+			if (!ml_get_interrupts_enabled)
+			{
+				SYSLOG("HBFX", "failed to resolve _ml_get_interrupts_enabled %d", patcher.getError());
+				patcher.clearError();
+			}
+
+			ml_set_interrupts_enabled = reinterpret_cast<t_ml_set_interrupts_enabled>(patcher.solveSymbol(KernelPatcher::KernelID, "_ml_set_interrupts_enabled"));
+			if (!ml_set_interrupts_enabled)
+			{
+				SYSLOG("HBFX", "failed to resolve _ml_set_interrupts_enabled %d", patcher.getError());
+				patcher.clearError();
+			}
+
+			if (ADDPR(hbfx_config).dumpNvram)
+			{
+				sync = reinterpret_cast<t_sync>(patcher.solveSymbol(KernelPatcher::KernelID, "_sync"));
+				if (!sync) {
+					SYSLOG("HBFX", "failed to resolve _sync %d", patcher.getError());
+					patcher.clearError();
+				}
+				
+				preemption_enabled = reinterpret_cast<t_preemption_enabled>(patcher.solveSymbol(KernelPatcher::KernelID, "_preemption_enabled"));
+				if (!preemption_enabled) {
+					SYSLOG("HBFX", "failed to resolve _preemption_enabled %d", patcher.getError());
+					patcher.clearError();
+				}
+				
+				enable_preemption = reinterpret_cast<t_enable_preemption>(patcher.solveSymbol(KernelPatcher::KernelID, "__enable_preemption"));
+				if (!enable_preemption) {
+					SYSLOG("HBFX", "failed to resolve __enable_preemption %d", patcher.getError());
+					patcher.clearError();
+				}
+				
+				disable_preemption = reinterpret_cast<t_disable_preemption>(patcher.solveSymbol(KernelPatcher::KernelID, "__disable_preemption"));
+				if (!disable_preemption) {
+					SYSLOG("HBFX", "failed to resolve __disable_preemption %d", patcher.getError());
+					patcher.clearError();
+				}
+				
+				if (sync && preemption_enabled && enable_preemption && disable_preemption && ml_at_interrupt_context &&
+					ml_get_interrupts_enabled && ml_set_interrupts_enabled)
+				{
+					KernelPatcher::RouteRequest request {"_packA", packA, orgPackA};
+					patcher.routeMultiple(KernelPatcher::KernelID, &request, 1);
+				}
 			}
 		}
 		
@@ -441,12 +415,13 @@ void HBFX::processKernel(KernelPatcher &patcher)
 
 void HBFX::processKext(KernelPatcher &patcher, size_t index, mach_vm_address_t address, size_t size)
 {
-	if (!initialize_nvstorage())
-		return;
+	bool nvram_patches_required = (ADDPR(hbfx_config).dumpNvram == true || !checkRTCExtendedMemory());
+	if (nvram_patches_required)
+		initialize_nvstorage();
 	
 	if (progressState != ProcessingState::EverythingDone)
 	{
-		bool autoHibernateModeOn = (ADDPR(hbfx_config).autoHibernateMode & Configuration::EnableAutoHibenation);
+		bool auto_hibernate_mode_on = (ADDPR(hbfx_config).autoHibernateMode & Configuration::EnableAutoHibenation);
 		
 		for (size_t i = 0; i < arrsize(kextList); i++)
 		{
@@ -459,11 +434,12 @@ void HBFX::processKext(KernelPatcher &patcher, size_t index, mach_vm_address_t a
 						{"__ZN11IOPCIDevice21extendedConfigWrite16Eyt", extendedConfigWrite16, orgExtendedConfigWrite16},
 					};
 
-					patcher.routeMultiple(index, requests, address, size);
+					if (!patcher.routeMultiple(index, requests, address, size))
+						SYSLOG("HBFX", "patcher.routeMultiple for %s is failed with error %d", "IOPCIBridge", patcher.getError());
 					progressState |= ProcessingState::IOPCIFamilyRouted;
 				}
 				
-				if (autoHibernateModeOn && i == 1 && !(progressState & ProcessingState::X86PluginRouted))
+				if (auto_hibernate_mode_on && i == 1 && !(progressState & ProcessingState::X86PluginRouted))
 				{
 					auto matching = IOService::serviceMatching("IOPMPowerSource");
 					if (matching) {
@@ -481,7 +457,8 @@ void HBFX::processKext(KernelPatcher &patcher, size_t index, mach_vm_address_t a
 							{"__ZN17X86PlatformPlugin18sleepPolicyHandlerEPK30IOPMSystemSleepPolicyVariablesP25IOPMSystemSleepParameters", X86PlatformPlugin_sleepPolicyHandler, orgSleepPolicyHandler}
 						};
 						
-						patcher.routeMultiple(index, requests, address, size);
+						if (!patcher.routeMultiple(index, requests, address, size))
+							SYSLOG("HBFX", "patcher.routeMultiple for %s is failed with error %d", "X86PlatformPlugin", patcher.getError());
 						progressState |= ProcessingState::X86PluginRouted;
 					}
 				}
