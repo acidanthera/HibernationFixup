@@ -1,5 +1,8 @@
 HibernationFixup Changelog
 ============================
+#### v1.2.6
+- Allow loading on 10.15 without `-lilubetaall`
+
 #### v1.2.5
 - Improve auto-hibernate feature: modify next wake time to currentTime + standbyDelay
 
