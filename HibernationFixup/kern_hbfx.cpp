@@ -325,7 +325,7 @@ void HBFX::extendedConfigWrite16(IOService *that, UInt64 offset, UInt16 data)
 
 void HBFX::processKernel(KernelPatcher &patcher)
 {
-	bool auto_hibernate_mode_on = (ADDPR(hbfx_config).autoHibernateMode & Configuration::EnableAutoHibenation) &&
+	bool auto_hibernate_mode_on = (ADDPR(hbfx_config).autoHibernateMode & Configuration::EnableAutoHibernation) &&
 								  (ADDPR(hbfx_config).autoHibernateMode & Configuration::CorrectWakeTime);
 	bool nvram_patches_required = (ADDPR(hbfx_config).dumpNvram == true || !checkRTCExtendedMemory());
 	if (!nvram_patches_required)
@@ -421,7 +421,7 @@ void HBFX::processKext(KernelPatcher &patcher, size_t index, mach_vm_address_t a
 	
 	if (progressState != ProcessingState::EverythingDone)
 	{
-		bool auto_hibernate_mode_on = (ADDPR(hbfx_config).autoHibernateMode & Configuration::EnableAutoHibenation);
+		bool auto_hibernate_mode_on = (ADDPR(hbfx_config).autoHibernateMode & Configuration::EnableAutoHibernation);
 		
 		for (size_t i = 0; i < arrsize(kextList); i++)
 		{

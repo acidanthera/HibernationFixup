@@ -21,7 +21,7 @@ public:
 	static constexpr const char *bootargDumpNvram         {"-hbfx-dump-nvram"};          // write NVRAM to file
 	static constexpr const char *bootargDisablePatchPCI   {"-hbfx-disable-patch-pci"};   // disable patch pci family
 	static constexpr const char *bootargPatchPCIWithList  {"hbfx-patch-pci"};            // patch pci family with list
-	static constexpr const char *bootargAutoHibernateMode {"hbfx-ahbm"};		    	 // auto hibernate modes
+	static constexpr const char *bootargAutoHibernateMode {"hbfx-ahbm"};		    	 // auto hibernate mode
 
 public:
 	/**
@@ -47,8 +47,8 @@ public:
 	/* Flags used to control automatic hibernation behavior (takes place only when system goes to sleep)
 	 */
 	enum AutoHibernateModes {
-		// If this flag is set, system will hibernate istead of regular sleep (flags below can be used to limit this behavior)
-		EnableAutoHibenation            = 1,
+		// If this flag is set, system will hibernate instead of regular sleep (flags below can be used to limit this behavior)
+		EnableAutoHibernation           = 1,
 		// Auto hibernation can happen when lid is closed (if bit is not set - no matter which status lid has)
 		WhenLidIsClosed                 = 2,
 		// Auto hibernation can happen when external power is disconnected (if bit is not set - no matter whether it is connected)
@@ -61,11 +61,11 @@ public:
 		WhenBatteryAtCriticalLevel      = 32,
 		// Modify next wake time to currentTime + standbyDelay
 		CorrectWakeTime					= 64,
-		// Reserver for future
+		// Reserved
 		Reserverd						= 128,
 		
-		// next 4 bits are used to specify minimal capacity percent remaining value when hibernation will be forced
-		// can be used together with WhenBatteryIsAtWarnLevel or WhenBatteryAtCriticalLevel, when IOPMPowerSource cannot detect
+		// Next 4 bits are used to specify minimal capacity percent remaining value when hibernation will be forced.
+		// Can be used together with WhenBatteryIsAtWarnLevel or WhenBatteryAtCriticalLevel, when IOPMPowerSource cannot detect
 		// warning or critical battery level
 		RemainCapacityBit1				= 256,
 		RemainCapacityBit2				= 512,
