@@ -1,5 +1,8 @@
 HibernationFixup Changelog
 ============================
+#### v1.2.7
+- Unified release archive names
+
 #### v1.2.6
 - Allow loading on 10.15 without `-lilubetaall`
 - Fix minor typos in code and comments (credits to PMheart)
