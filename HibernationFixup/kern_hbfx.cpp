@@ -443,10 +443,12 @@ void HBFX::processKext(KernelPatcher &patcher, size_t index, mach_vm_address_t a
 				{
 					auto matching = IOService::serviceMatching("IOPMPowerSource");
 					if (matching) {
-						power_source = OSDynamicCast(IOPMPowerSource, IOService::copyMatchingService(matching));
+						auto matching_copy = IOService::copyMatchingService(matching);
+						power_source = OSDynamicCast(IOPMPowerSource, matching_copy);
 						matching->release();
 						if (!power_source) {
 							SYSLOG("HBFX", "failed to get IOPMPowerSource");
+							OSSafeReleaseNULL(matching_copy);
 						}
 					} else {
 						SYSLOG("HBFX", "failed to allocate IOPMPowerSource service matching");
@@ -498,7 +500,7 @@ bool HBFX::initialize_nvstorage()
 			if (!ADDPR(hbfx_config).dumpNvram)
 			{
 				OSData *data = nvstorage.read("EmuVariableUefiPresent", NVStorage::OptRaw);
-				if (data && data->isEqualTo(OSString::withCStringNoCopy("Yes")))
+				if (data && data->isEqualTo("Yes", sizeof("Yes")))
 				{
 					DBGLOG("HBFX", "EmuVariableUefiPresent is detected, set dumpNvram to true");
 					ADDPR(hbfx_config).dumpNvram = true;

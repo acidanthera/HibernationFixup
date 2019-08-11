@@ -1,5 +1,8 @@
 HibernationFixup Changelog
 ============================
+#### v1.2.8
+- Fixed memory leaks
+
 #### v1.2.7
 - Unified release archive names
 
