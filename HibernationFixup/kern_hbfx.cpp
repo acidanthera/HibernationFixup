@@ -322,11 +322,50 @@ void HBFX::extendedConfigWrite16(IOService *that, UInt64 offset, UInt16 data)
 }
 
 //==============================================================================
+//
+// Find service by name in a specified registry plane (gIO80211FamilyPlane or gIOServicePlane)
+//
+IOService* LIBKERN_RETURNS_NOT_RETAINED findService(const IORegistryPlane* plane, const char *service_name)
+{
+	IOService            * service = 0;
+	IORegistryIterator   * iter = IORegistryIterator::iterateOver(plane, kIORegistryIterateRecursively);
+	OSOrderedSet         * all = 0;
+	
+	if ( iter)
+	{
+		do
+		{
+			if (all)
+				all->release();
+			all = iter->iterateAll();
+		}
+		while (!iter->isValid());
+		iter->release();
+		
+		if (all)
+		{
+			while ((service = OSDynamicCast(IOService, all->getFirstObject())))
+			{
+				all->removeObject(service);
+				if (strcmp(service->getName(), service_name) == 0)
+					break;
+			}
+			
+			all->release();
+		}
+	}
+	
+	return service;
+}
+
+//==============================================================================
 
 void HBFX::processKernel(KernelPatcher &patcher)
 {
 	bool auto_hibernate_mode_on = (ADDPR(hbfx_config).autoHibernateMode & Configuration::EnableAutoHibernation) &&
 								  (ADDPR(hbfx_config).autoHibernateMode & Configuration::CorrectWakeTime);
+	if (!ADDPR(hbfx_config).dumpNvram && emuVariableIsDetected())
+		ADDPR(hbfx_config).dumpNvram = true;
 	bool nvram_patches_required = (ADDPR(hbfx_config).dumpNvram == true || !checkRTCExtendedMemory());
 	if (!nvram_patches_required)
 	{
@@ -415,9 +454,24 @@ void HBFX::processKernel(KernelPatcher &patcher)
 
 void HBFX::processKext(KernelPatcher &patcher, size_t index, mach_vm_address_t address, size_t size)
 {
+	if (!ADDPR(hbfx_config).dumpNvram && emuVariableIsDetected())
+		ADDPR(hbfx_config).dumpNvram = true;
 	bool nvram_patches_required = (ADDPR(hbfx_config).dumpNvram == true || !checkRTCExtendedMemory());
 	if (nvram_patches_required)
 		initialize_nvstorage();
+	
+	IOService* nvram_service = findService(gIOServicePlane, "AppleEFINVRAM");
+	if (nvram_service != nullptr)
+	{
+		auto emu_variable  = OSDynamicCast(OSString, nvram_service->getProperty("EmuVariableUefiPresent"));
+		if (emu_variable && emu_variable->isEqualTo("Yes"))
+		{
+			initialize_nvstorage();
+		}
+		SYSLOG("HBFX", "AppleEFINVRAM is found");
+	}
+	else
+		SYSLOG("HBFX", "AppleEFINVRAM is not found");
 	
 	if (progressState != ProcessingState::EverythingDone)
 	{
@@ -496,17 +550,6 @@ bool HBFX::initialize_nvstorage()
 			DBGLOG("HBFX", "NVStorage was initialized");
 			
 			nvstorage_initialized = true;
-			
-			if (!ADDPR(hbfx_config).dumpNvram)
-			{
-				OSData *data = nvstorage.read("EmuVariableUefiPresent", NVStorage::OptRaw);
-				if (data && data->isEqualTo("Yes", sizeof("Yes")))
-				{
-					DBGLOG("HBFX", "EmuVariableUefiPresent is detected, set dumpNvram to true");
-					ADDPR(hbfx_config).dumpNvram = true;
-				}
-				OSSafeReleaseNULL(data);
-			}
 			
 #if defined(DEBUG) && defined(DEBUG_NVSTORAGE)
 			// short NVStorage test
@@ -617,4 +660,27 @@ bool HBFX::initialize_nvstorage()
 	}
 	
 	return nvstorage_initialized;
+}
+
+//==============================================================================
+
+bool HBFX::emuVariableIsDetected()
+{
+	IOService* nvram_service = findService(gIOServicePlane, "AppleEFINVRAM");
+	if (nvram_service != nullptr)
+	{
+		DBGLOG("HBFX", "AppleEFINVRAM is found");
+		auto emu_variable  = OSDynamicCast(OSData, nvram_service->getProperty("EmuVariableUefiPresent"));
+		if (emu_variable != nullptr && emu_variable->isEqualTo("Yes", 3))
+		{
+			DBGLOG("HBFX", "EmuVariableUefiPresent is detected");
+			return true;
+		}
+		else
+			DBGLOG("HBFX", "EmuVariableUefiPresent value is wrong");
+	}
+	else
+		SYSLOG("HBFX", "AppleEFINVRAM is not found");
+	
+	return false;
 }

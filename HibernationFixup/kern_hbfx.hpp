@@ -48,6 +48,8 @@ private:
 	 */
 	bool initialize_nvstorage();
 	
+	bool emuVariableIsDetected();
+	
 	/**
 	 *  Hooked methods / callbacks
 	 */
