@@ -1,10 +1,8 @@
 HibernationFixup Changelog
 ============================
-#### v1.2.9
-- Fixed EmuVariableUefiPresent detection (nvram.plist will be properly saved if EmuVariableUefiPresent == Yes in ioreg)
-
 #### v1.2.8
 - Fixed memory leaks
+- Fixed EmuVariableUefiPresent detection (nvram.plist will be properly saved if EmuVariableUefiPresent == Yes in ioreg)
 
 #### v1.2.7
 - Unified release archive names
