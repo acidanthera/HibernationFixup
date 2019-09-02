@@ -69,6 +69,19 @@ enum {
 	kPMCalendarTypeSleepService = 2
 };
 
+// gIOHibernateMode, kIOHibernateModeKey
+enum
+{
+	kIOHibernateModeOn      = 0x00000001,
+	kIOHibernateModeSleep   = 0x00000002,
+	kIOHibernateModeEncrypt = 0x00000004,
+	kIOHibernateModeDiscardCleanInactive = 0x00000008,
+	kIOHibernateModeDiscardCleanActive   = 0x00000010,
+	kIOHibernateModeSwitch	= 0x00000020,
+	kIOHibernateModeRestart	= 0x00000040,
+	kIOHibernateModeSSDInvert	= 0x00000080,
+	kIOHibernateModeFileResize	= 0x00000100,
+};
 
 // gIOHibernateState, kIOHibernateStateKey
 enum

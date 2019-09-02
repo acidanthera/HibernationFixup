@@ -135,7 +135,8 @@ IOReturn HBFX::setMaintenanceWakeCalendar(IOPMrootDomain* that, IOPMCalendarStru
 	DBGLOG("HBFX", "Calendar time %02d.%02d.%04d %02d:%02d:%02d, selector: %d", calendar->day, calendar->month, calendar->year,
 		   calendar->hour, calendar->minute, calendar->second, calendar->selector);
 	
-	if (calendar->selector == kPMCalendarTypeSleepService && callbackHBFX->latestStandbyDelay != 0)
+	bool pmset_direct_mode = (callbackHBFX->latestHibernateMode & (kIOHibernateModeDiscardCleanInactive | kIOHibernateModeDiscardCleanActive)) != 0;
+	if (!callbackHBFX->forceHibernate && callbackHBFX->latestStandbyDelay != 0 && !pmset_direct_mode && calendar->selector == kPMCalendarTypeSleepService)
 	{
 		struct tm tm;
 		struct timeval tv;
@@ -159,7 +160,8 @@ IOReturn HBFX::setMaintenanceWakeCalendar(IOPMrootDomain* that, IOPMCalendarStru
 
 IOReturn HBFX::X86PlatformPlugin_sleepPolicyHandler(void * target, IOPMSystemSleepPolicyVariables * vars, IOPMSystemSleepParameters * params)
 {
-	DBGLOG("HBFX", "X86PlatformPlugin_sleepPolicyHandler is called");
+	callbackHBFX->forceHibernate = false;
+	
 	IOReturn result = FunctionCast(X86PlatformPlugin_sleepPolicyHandler, callbackHBFX->orgSleepPolicyHandler)(target, vars, params);
 	if (result != KERN_SUCCESS)
 		SYSLOG("HBFX", "orgSleepPolicyHandler returned error 0x%x", result);
@@ -169,6 +171,8 @@ IOReturn HBFX::X86PlatformPlugin_sleepPolicyHandler(void * target, IOPMSystemSle
 		DBGLOG("HBFX", "X86PlatformPlugin_sleepPolicyHandler standbyDelay: %d, standbyTimer: %d, poweroffDelay: %d, poweroffTimer: %d",
 			   vars->standbyDelay, vars->standbyTimer, vars->poweroffDelay, vars->poweroffTimer);
 		DBGLOG("HBFX", "X86PlatformPlugin_sleepPolicyHandler ecWakeTimer: %d, ecPoweroffTimer: %d", params->ecWakeTimer, params->ecPoweroffTimer);
+		callbackHBFX->latestHibernateMode = vars->hibernateMode;
+		callbackHBFX->latestStandbyDelay  = vars->standbyDelay;
 		while (params->sleepType == kIOPMSleepTypeDeepIdle && callbackHBFX->power_source)
 		{
 			auto autoHibernateMode = ADDPR(hbfx_config).autoHibernateMode;
@@ -178,9 +182,6 @@ IOReturn HBFX::X86PlatformPlugin_sleepPolicyHandler(void * target, IOPMSystemSle
 			bool whenBatteryIsAtWarnLevel = (autoHibernateMode & Configuration::WhenBatteryIsAtWarnLevel);
 			bool whenBatteryAtCriticalLevel = (autoHibernateMode & Configuration::WhenBatteryAtCriticalLevel);
 			int  minimalRemainingCapacity = ((autoHibernateMode & 0xF00) >> 8);
-			
-			callbackHBFX->latestStandbyDelay = vars->standbyDelay;
-			bool forceHibernate = false;
 	
 			if (callbackHBFX->power_source->batteryInstalled()) {
 				if (whenExternalPowerIsDisconnected && callbackHBFX->power_source->externalConnected()) {
@@ -200,24 +201,25 @@ IOReturn HBFX::X86PlatformPlugin_sleepPolicyHandler(void * target, IOPMSystemSle
 						   callbackHBFX->power_source->capacityPercentRemaining(), minimalRemainingCapacity);
 					if (whenBatteryIsAtWarnLevel && callbackHBFX->power_source->atWarnLevel()) {
 						DBGLOG("HBFX", "Auto hibernate: Battery is at warning level, capacity remaining: %d, force to hibernate", callbackHBFX->power_source->capacityPercentRemaining());
-						forceHibernate = true;
+						callbackHBFX->forceHibernate = true;
 					}
 		
 					if (whenBatteryAtCriticalLevel && callbackHBFX->power_source->atCriticalLevel()) {
 						DBGLOG("HBFX", "Auto hibernate: battery is at critical level, capacity remaining: %d, force to hibernate", callbackHBFX->power_source->capacityPercentRemaining());
-						forceHibernate = true;
+						callbackHBFX->forceHibernate = true;
 					}
 					
-					if (!forceHibernate && (whenBatteryIsAtWarnLevel || whenBatteryAtCriticalLevel) && minimalRemainingCapacity != 0 &&
+					if (!callbackHBFX->forceHibernate && (whenBatteryIsAtWarnLevel || whenBatteryAtCriticalLevel) && minimalRemainingCapacity != 0 &&
 						callbackHBFX->power_source->capacityPercentRemaining() <= minimalRemainingCapacity)
 					{
 						DBGLOG("HBFX", "Auto hibernate: capacity remaining: %d less than minimal: %d, force to hibernate", callbackHBFX->power_source->capacityPercentRemaining());
-						forceHibernate = true;
+						callbackHBFX->forceHibernate = true;
 					}
 				}
 			}
-			
-			if (!forceHibernate && whenLidIsClosed && OSDynamicCast(OSBoolean, IOService::getPMRootDomain()->getProperty(kAppleClamshellStateKey)) != kOSBooleanTrue) {
+
+			bool lidIsOpen = OSDynamicCast(OSBoolean, IOService::getPMRootDomain()->getProperty(kAppleClamshellStateKey)) != kOSBooleanTrue;
+			if (!callbackHBFX->forceHibernate && whenLidIsClosed && lidIsOpen) {
 				DBGLOG("HBFX", "Auto hibernate: clamshell is open, do not force to hibernate");
 				break;
 			}
@@ -228,6 +230,7 @@ IOReturn HBFX::X86PlatformPlugin_sleepPolicyHandler(void * target, IOPMSystemSle
 			params->sleepFlags = kIOPMSleepFlagHibernate;
 			
 			DBGLOG("HBFX", "Auto hibernate: force hibernate...");
+			callbackHBFX->forceHibernate = true;
 			break;
 		}
 	}
@@ -460,19 +463,6 @@ void HBFX::processKext(KernelPatcher &patcher, size_t index, mach_vm_address_t a
 	if (nvram_patches_required)
 		initialize_nvstorage();
 	
-	IOService* nvram_service = findService(gIOServicePlane, "AppleEFINVRAM");
-	if (nvram_service != nullptr)
-	{
-		auto emu_variable  = OSDynamicCast(OSString, nvram_service->getProperty("EmuVariableUefiPresent"));
-		if (emu_variable && emu_variable->isEqualTo("Yes"))
-		{
-			initialize_nvstorage();
-		}
-		SYSLOG("HBFX", "AppleEFINVRAM is found");
-	}
-	else
-		SYSLOG("HBFX", "AppleEFINVRAM is not found");
-	
 	if (progressState != ProcessingState::EverythingDone)
 	{
 		bool auto_hibernate_mode_on = (ADDPR(hbfx_config).autoHibernateMode & Configuration::EnableAutoHibernation);
@@ -669,7 +659,6 @@ bool HBFX::emuVariableIsDetected()
 	IOService* nvram_service = findService(gIOServicePlane, "AppleEFINVRAM");
 	if (nvram_service != nullptr)
 	{
-		DBGLOG("HBFX", "AppleEFINVRAM is found");
 		auto emu_variable  = OSDynamicCast(OSData, nvram_service->getProperty("EmuVariableUefiPresent"));
 		if (emu_variable != nullptr && emu_variable->isEqualTo("Yes", 3))
 		{
@@ -677,7 +666,7 @@ bool HBFX::emuVariableIsDetected()
 			return true;
 		}
 		else
-			DBGLOG("HBFX", "EmuVariableUefiPresent value is wrong");
+			DBGLOG("HBFX", "EmuVariableUefiPresent is not detected");
 	}
 	else
 		SYSLOG("HBFX", "AppleEFINVRAM is not found");

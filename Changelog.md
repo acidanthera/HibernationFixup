@@ -3,6 +3,7 @@ HibernationFixup Changelog
 #### v1.2.8
 - Fixed memory leaks
 - Fixed EmuVariableUefiPresent detection (nvram.plist will be properly saved if EmuVariableUefiPresent == Yes in ioreg)
+- Improve auto-hibernate feature: modify next wake time only before regular sleep
 
 #### v1.2.7
 - Unified release archive names
