@@ -54,6 +54,7 @@ private:
 	 *  Hooked methods / callbacks
 	 */
 	static IOReturn     IOHibernateSystemSleep(void);
+	static IOReturn     IOHibernateSystemWake(void);
 	static IOReturn     setMaintenanceWakeCalendar(IOPMrootDomain* that, IOPMCalendarStruct * calendar);
 	static IOReturn     X86PlatformPlugin_sleepPolicyHandler(void * target, IOPMSystemSleepPolicyVariables * vars, IOPMSystemSleepParameters * params);
 	
@@ -65,6 +66,7 @@ private:
 	 *  Trampolines for original method invocations
 	 */
 	mach_vm_address_t orgIOHibernateSystemSleep {};
+	mach_vm_address_t orgIOHibernateSystemWake {};
 	mach_vm_address_t orgSetMaintenanceWakeCalendar {};
 	mach_vm_address_t orgSleepPolicyHandler {};
 	mach_vm_address_t orgPackA {};
@@ -97,9 +99,16 @@ private:
 	
 	bool    correct_pci_config_command {false};
 	
-	uint32_t  latestStandbyDelay {0};
-	uint32_t  latestHibernateMode {0};
-	bool      forceHibernate {false};
+	uint32_t  	latestStandbyDelay {0};
+	uint32_t  	latestHibernateMode {0};
+	uint32_t  	sleepPhase {-1U};
+	uint64_t    sleepFactors {0};
+	uint32_t    sleepReason {0};
+	uint32_t    sleepType {0};
+	uint32_t    sleepFlags {0};
+	bool      	forceHibernate {false};
+	bool	  	sleepServiceWake {false};
+	bool	  	wakeCalendarSet {false};
 	
 	/**
 	 *  Current progress mask

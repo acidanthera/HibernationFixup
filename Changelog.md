@@ -1,5 +1,8 @@
 HibernationFixup Changelog
 ============================
+#### v1.2.9
+- Improve auto-hibernate feature: if power nap is enabled, hibernation will start after next Maintenance/SleepService wake (standbyDelay value is respected)
+
 #### v1.2.8
 - Fixed memory leaks
 - Fixed EmuVariableUefiPresent detection (nvram.plist will be properly saved if EmuVariableUefiPresent == Yes in ioreg)

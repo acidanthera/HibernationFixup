@@ -21,6 +21,10 @@
 #define kAppleClamshellCausesSleepKey   "AppleClamshellCausesSleep"
 #define kAppleSleepDisabled				"SleepDisabled"
 
+#define kIOPMRootDomainWakeReasonKey    		"Wake Reason"
+#define kIOPMRootDomainWakeTypeSleepService     "SleepService"
+#define kIOPMRootDomainWakeTypeMaintenance      "Maintenance"
+
 
 struct IOPMSystemSleepPolicyVariables
 {

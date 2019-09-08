@@ -127,6 +127,34 @@ IOReturn HBFX::IOHibernateSystemSleep(void)
 	return result;
 }
 
+//==============================================================================
+
+IOReturn HBFX::IOHibernateSystemWake(void)
+{
+	callbackHBFX->sleepServiceWake = false;
+	callbackHBFX->wakeCalendarSet  = false;
+	
+	IOReturn result = FunctionCast(IOHibernateSystemWake, callbackHBFX->orgIOHibernateSystemWake)();
+	DBGLOG("HBFX", "IOHibernateSystemWake is called, result is: %x", result);
+	
+	OSString * wakeType = OSDynamicCast(OSString, IOService::getPMRootDomain()->getProperty(kIOPMRootDomainWakeTypeKey));
+	OSString * wakeReason = OSDynamicCast(OSString, IOService::getPMRootDomain()->getProperty(kIOPMRootDomainWakeReasonKey));
+	if (result == KERN_SUCCESS && wakeType && wakeReason)
+	{
+		DBGLOG("HBFX", "IOHibernateSystemWake: wake type is: %s", wakeType->getCStringNoCopy());
+		DBGLOG("HBFX", "IOHibernateSystemWake: wake reason is: %s", wakeReason->getCStringNoCopy());
+	
+		if (strstr(wakeReason->getCStringNoCopy(), "RTC", strlen("RTC")) &&
+			(!strcmp(wakeType->getCStringNoCopy(), kIOPMRootDomainWakeTypeSleepService) || !strcmp(wakeType->getCStringNoCopy(), kIOPMRootDomainWakeTypeMaintenance))
+			)
+		{
+			callbackHBFX->sleepServiceWake = true;
+			DBGLOG("HBFX", "IOHibernateSystemWake: Maintenance/SleepService wake");
+		}
+	}
+	
+	return result;
+}
 
 //==============================================================================
 
@@ -135,8 +163,9 @@ IOReturn HBFX::setMaintenanceWakeCalendar(IOPMrootDomain* that, IOPMCalendarStru
 	DBGLOG("HBFX", "Calendar time %02d.%02d.%04d %02d:%02d:%02d, selector: %d", calendar->day, calendar->month, calendar->year,
 		   calendar->hour, calendar->minute, calendar->second, calendar->selector);
 	
-	bool pmset_direct_mode = (callbackHBFX->latestHibernateMode & (kIOHibernateModeDiscardCleanInactive | kIOHibernateModeDiscardCleanActive)) != 0;
-	if (!callbackHBFX->forceHibernate && callbackHBFX->latestStandbyDelay != 0 && !pmset_direct_mode && calendar->selector == kPMCalendarTypeSleepService)
+	callbackHBFX->wakeCalendarSet = false;
+	bool pmset_non_default_mode = (callbackHBFX->latestHibernateMode != (kIOHibernateModeOn | kIOHibernateModeSleep));
+	if (callbackHBFX->sleepPhase == 0 && callbackHBFX->latestStandbyDelay != 0 && !pmset_non_default_mode)
 	{
 		struct tm tm;
 		struct timeval tv;
@@ -150,7 +179,8 @@ IOReturn HBFX::setMaintenanceWakeCalendar(IOPMrootDomain* that, IOPMCalendarStru
 		DBGLOG("HBFX", "Postpone wake to: %02d.%02d.%04d %02d:%02d:%02d", tm.tm_mday, tm.tm_mon, tm.tm_year, tm.tm_hour, tm.tm_min, tm.tm_sec);
 		
 		*calendar = { static_cast<UInt32>(tm.tm_year), static_cast<UInt8>(tm.tm_mon), static_cast<UInt8>(tm.tm_mday),
-			static_cast<UInt8>(tm.tm_hour), static_cast<UInt8>(tm.tm_min), static_cast<UInt8>(tm.tm_sec), kPMCalendarTypeSleepService };
+			static_cast<UInt8>(tm.tm_hour), static_cast<UInt8>(tm.tm_min), static_cast<UInt8>(tm.tm_sec), calendar->selector };
+		callbackHBFX->wakeCalendarSet = true;
 	}
 	
 	return FunctionCast(setMaintenanceWakeCalendar, callbackHBFX->orgSetMaintenanceWakeCalendar)(that, calendar);
@@ -173,7 +203,16 @@ IOReturn HBFX::X86PlatformPlugin_sleepPolicyHandler(void * target, IOPMSystemSle
 		DBGLOG("HBFX", "X86PlatformPlugin_sleepPolicyHandler ecWakeTimer: %d, ecPoweroffTimer: %d", params->ecWakeTimer, params->ecPoweroffTimer);
 		callbackHBFX->latestHibernateMode = vars->hibernateMode;
 		callbackHBFX->latestStandbyDelay  = vars->standbyDelay;
-		while (params->sleepType == kIOPMSleepTypeDeepIdle && callbackHBFX->power_source)
+		callbackHBFX->sleepPhase          = vars->sleepPhase;
+		if (vars->sleepPhase == 0)
+		{
+			callbackHBFX->sleepFactors = vars->sleepFactors;
+			callbackHBFX->sleepReason  = vars->sleepReason;
+			callbackHBFX->sleepType    = params->sleepType;
+			callbackHBFX->sleepFlags   = params->sleepFlags;
+		}
+		
+		while ((params->sleepType == kIOPMSleepTypeDeepIdle || params->sleepType == kIOPMSleepTypeStandby) && callbackHBFX->power_source)
 		{
 			auto autoHibernateMode = ADDPR(hbfx_config).autoHibernateMode;
 			bool whenLidIsClosed = (autoHibernateMode & Configuration::WhenLidIsClosed);
@@ -223,11 +262,37 @@ IOReturn HBFX::X86PlatformPlugin_sleepPolicyHandler(void * target, IOPMSystemSle
 				DBGLOG("HBFX", "Auto hibernate: clamshell is open, do not force to hibernate");
 				break;
 			}
-	
-			vars->sleepFactors = kIOPMSleepFactorStandbyForced | kIOPMSleepFactorStandbyNoDelay;
-			vars->sleepReason  = kIOPMSleepReasonLowPower;
-			params->sleepType  = kIOPMSleepTypeStandby;
-			params->sleepFlags = kIOPMSleepFlagHibernate;
+			
+			if (callbackHBFX->sleepPhase == 1 && (!callbackHBFX->wakeCalendarSet || callbackHBFX->forceHibernate))
+			{
+				vars->sleepFactors = kIOPMSleepFactorStandbyForced | kIOPMSleepFactorStandbyNoDelay;
+				vars->sleepReason  = kIOPMSleepReasonLowPower;
+				params->sleepType  = kIOPMSleepTypeStandby;
+				params->sleepFlags = kIOPMSleepFlagHibernate;
+				DBGLOG("HBFX", "Auto hibernate: sleep phase 1, set hibernate values");
+			}
+			else if (callbackHBFX->sleepPhase == 2)
+			{
+				if (callbackHBFX->forceHibernate || !callbackHBFX->wakeCalendarSet || callbackHBFX->sleepServiceWake)
+				{
+					vars->sleepFactors = kIOPMSleepFactorStandbyForced | kIOPMSleepFactorStandbyNoDelay;
+					vars->sleepReason  = kIOPMSleepReasonLowPower;
+					params->sleepType  = kIOPMSleepTypeStandby;
+					params->sleepFlags = kIOPMSleepFlagHibernate;
+					DBGLOG("HBFX", "Auto hibernate: sleep phase 2, hibernate now");
+				}
+				else
+				{
+					vars->sleepFactors = callbackHBFX->sleepFactors;
+					vars->sleepReason  = callbackHBFX->sleepReason;
+					params->sleepType  = callbackHBFX->sleepType;
+					params->sleepFlags = callbackHBFX->sleepFlags;
+					DBGLOG("HBFX", "Auto hibernate: sleep phase 2, postpone hibernate");
+				}
+				
+				callbackHBFX->sleepServiceWake = false;
+				callbackHBFX->wakeCalendarSet  = false;
+			}
 			
 			DBGLOG("HBFX", "Auto hibernate: force hibernate...");
 			callbackHBFX->forceHibernate = true;
@@ -365,8 +430,7 @@ IOService* LIBKERN_RETURNS_NOT_RETAINED findService(const IORegistryPlane* plane
 
 void HBFX::processKernel(KernelPatcher &patcher)
 {
-	bool auto_hibernate_mode_on = (ADDPR(hbfx_config).autoHibernateMode & Configuration::EnableAutoHibernation) &&
-								  (ADDPR(hbfx_config).autoHibernateMode & Configuration::CorrectWakeTime);
+	bool auto_hibernate_mode_on = (ADDPR(hbfx_config).autoHibernateMode & Configuration::EnableAutoHibernation);
 	if (!ADDPR(hbfx_config).dumpNvram && emuVariableIsDetected())
 		ADDPR(hbfx_config).dumpNvram = true;
 	bool nvram_patches_required = (ADDPR(hbfx_config).dumpNvram == true || !checkRTCExtendedMemory());
@@ -380,13 +444,16 @@ void HBFX::processKernel(KernelPatcher &patcher)
 	if (!(progressState & ProcessingState::KernelRouted))
 	{
 		if (auto_hibernate_mode_on) {
-			KernelPatcher::RouteRequest request {"__ZN14IOPMrootDomain26setMaintenanceWakeCalendarEPK18IOPMCalendarStruct", setMaintenanceWakeCalendar, orgSetMaintenanceWakeCalendar};
-			if (!patcher.routeMultiple(KernelPatcher::KernelID, &request, 1))
-				SYSLOG("HBFX", "patcher.routeMultiple for %s is failed with error %d", request.symbol, patcher.getError());
+			KernelPatcher::RouteRequest requests[] = {
+				{"__ZN14IOPMrootDomain26setMaintenanceWakeCalendarEPK18IOPMCalendarStruct", setMaintenanceWakeCalendar, orgSetMaintenanceWakeCalendar},
+				{"_IOHibernateSystemWake", IOHibernateSystemWake, orgIOHibernateSystemWake}
+			};
+			if (!patcher.routeMultiple(KernelPatcher::KernelID, requests, arrsize(requests)))
+				SYSLOG("HBFX", "patcher.routeMultiple for %s is failed with error %d", requests[0].symbol, patcher.getError());
 		}
 		
 		if (nvram_patches_required && initialize_nvstorage()) {
-			KernelPatcher::RouteRequest request {"_IOHibernateSystemSleep", IOHibernateSystemSleep, orgIOHibernateSystemSleep};
+			KernelPatcher::RouteRequest request	{"_IOHibernateSystemSleep", IOHibernateSystemSleep, orgIOHibernateSystemSleep};
 			if (!patcher.routeMultiple(KernelPatcher::KernelID, &request, 1))
 				SYSLOG("HBFX", "patcher.routeMultiple for %s is failed with error %d", request.symbol, patcher.getError());
 

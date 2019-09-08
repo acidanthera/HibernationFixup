@@ -20,7 +20,7 @@ public:
 	static const char *bootargBeta[];
 	static constexpr const char *bootargDumpNvram         {"-hbfx-dump-nvram"};          // write NVRAM to file
 	static constexpr const char *bootargDisablePatchPCI   {"-hbfx-disable-patch-pci"};   // disable patch pci family
-	static constexpr const char *bootargPatchPCIWithList  {"hbfx-patch-pci"};            // patch pci family with list
+	static constexpr const char *bootargPatchPCIWithList  {"hbfx-patch-pci"};            // patch pci family ignored device list
 	static constexpr const char *bootargAutoHibernateMode {"hbfx-ahbm"};		    	 // auto hibernate mode
 
 public:
@@ -59,10 +59,10 @@ public:
 		WhenBatteryIsAtWarnLevel        = 16,
 		// Auto hibernation can happen when battery is at critical level (osx is responsible for this level)
 		WhenBatteryAtCriticalLevel      = 32,
-		// Modify next wake time to currentTime + standbyDelay
-		CorrectWakeTime					= 64,
 		// Reserved
-		Reserverd						= 128,
+		Reserved1    					= 64,
+		// Reserved
+		Reserverd2						= 128,
 		
 		// Next 4 bits are used to specify minimal capacity percent remaining value when hibernation will be forced.
 		// Can be used together with WhenBatteryIsAtWarnLevel or WhenBatteryAtCriticalLevel, when IOPMPowerSource cannot detect
