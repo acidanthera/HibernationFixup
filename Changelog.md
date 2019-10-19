@@ -1,5 +1,8 @@
 HibernationFixup Changelog
 ============================
+#### v1.3.0
+- Minor improvement in method findService (based on panic report analysis)
+
 #### v1.2.9
 - Improve auto-hibernate feature: if power nap is enabled, hibernation will start after next Maintenance/SleepService wake (standbyDelay value is respected)
 
