@@ -25,6 +25,9 @@
 #define kIOPMRootDomainWakeTypeSleepService     "SleepService"
 #define kIOPMRootDomainWakeTypeMaintenance      "Maintenance"
 
+extern const IORegistryPlane 			*gIODTPlane;
+#define kIODeviceTreePlane              "IODeviceTree"
+
 
 struct IOPMSystemSleepPolicyVariables
 {

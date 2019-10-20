@@ -389,42 +389,6 @@ void HBFX::extendedConfigWrite16(IOService *that, UInt64 offset, UInt16 data)
 	FunctionCast(extendedConfigWrite16, callbackHBFX->orgExtendedConfigWrite16)(that, offset, data);
 }
 
-//==============================================================================
-//
-// Find service by name in a specified registry plane (gIO80211FamilyPlane or gIOServicePlane)
-//
-IOService* LIBKERN_RETURNS_NOT_RETAINED findService(const IORegistryPlane* plane, const char *service_name)
-{
-	IOService            * service = 0;
-	IORegistryIterator   * iter = IORegistryIterator::iterateOver(plane, kIORegistryIterateRecursively);
-	OSOrderedSet         * all = 0;
-	
-	if ( iter)
-	{
-		do
-		{
-			if (all)
-				all->release();
-			all = iter->iterateAll();
-		}
-		while (!iter->isValid());
-		iter->release();
-		
-		if (all)
-		{
-			while ((service = OSDynamicCast(IOService, all->getFirstObject())))
-			{
-				if (strcmp(service->getName(), service_name) == 0)
-					break;
-				all->removeObject(service);
-			}
-			
-			all->release();
-		}
-	}
-	
-	return service;
-}
 
 //==============================================================================
 
@@ -723,20 +687,27 @@ bool HBFX::initialize_nvstorage()
 
 bool HBFX::emuVariableIsDetected()
 {
-	IOService* nvram_service = findService(gIOServicePlane, "AppleEFINVRAM");
-	if (nvram_service != nullptr)
+	if (gIODTPlane != nullptr)
 	{
-		auto emu_variable  = OSDynamicCast(OSData, nvram_service->getProperty("EmuVariableUefiPresent"));
-		if (emu_variable != nullptr && emu_variable->isEqualTo("Yes", 3))
+		auto *reg_entry = IORegistryEntry::fromPath("/options", gIODTPlane);
+		if (reg_entry != nullptr)
 		{
-			DBGLOG("HBFX", "EmuVariableUefiPresent is detected");
-			return true;
+			auto reg_variable  = OSDynamicCast(OSData, reg_entry->getProperty("EmuVariableUefiPresent"));
+			bool emu_detected  = (reg_variable != nullptr && reg_variable->isEqualTo("Yes", 3));
+			reg_entry->release();
+			if (emu_detected)
+			{
+				DBGLOG("HBFX", "EmuVariableUefiPresent is detected");
+				return true;
+			}
+			else
+				DBGLOG("HBFX", "EmuVariableUefiPresent is not detected");
 		}
 		else
-			DBGLOG("HBFX", "EmuVariableUefiPresent is not detected");
+			SYSLOG("HBFX", "Registry entry /options cannot be found");
 	}
 	else
-		SYSLOG("HBFX", "AppleEFINVRAM is not found");
+		SYSLOG("HBFX", "Plane %s is not found", kIODeviceTreePlane);
 	
 	return false;
 }
