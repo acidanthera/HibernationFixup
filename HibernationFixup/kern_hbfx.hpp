@@ -103,9 +103,6 @@ private:
 	using t_ml_set_interrupts_enabled = boolean_t (*) (boolean_t enable);
 	t_ml_set_interrupts_enabled ml_set_interrupts_enabled {nullptr};
 	
-	using t_vprintf = int (*) (const char *fmt, va_list ap);
-	t_vprintf vprintf;
-	
 	bool    correct_pci_config_command {false};
 	
 	uint32_t  	latestStandbyDelay {0};
