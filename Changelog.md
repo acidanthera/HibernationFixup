@@ -1,5 +1,8 @@
 HibernationFixup Changelog
 ============================
+#### v1.3.1
+- Code refactoring, fix duplicates in log, auto-hibernate can work without power source
+
 #### v1.3.0
 - Do not use recursive iterator to detect EmuVariableUefiPresent  (based on panic report analysis)
 

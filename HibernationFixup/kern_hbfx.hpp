@@ -48,25 +48,31 @@ private:
 	 */
 	bool initialize_nvstorage();
 	
+	// detect whether emuVariable driver exists
 	bool emuVariableIsDetected();
 	
+	// return pointer to IOPMPowerSource
+	IOPMPowerSource *getPowerSource();
 	/**
 	 *  Hooked methods / callbacks
 	 */
 	static IOReturn     IOHibernateSystemSleep(void);
 	static IOReturn     IOHibernateSystemWake(void);
+	
 	static IOReturn     setMaintenanceWakeCalendar(IOPMrootDomain* that, IOPMCalendarStruct * calendar);
 	static IOReturn     X86PlatformPlugin_sleepPolicyHandler(void * target, IOPMSystemSleepPolicyVariables * vars, IOPMSystemSleepParameters * params);
 	
 	static int          packA(char *inbuf, uint32_t length, uint32_t buflen);
 	static IOReturn     restoreMachineState(IOService *that, IOOptionBits options, IOService * device);
 	static void         extendedConfigWrite16(IOService *that, UInt64 offset, UInt16 data);
+
 	
 	/**
 	 *  Trampolines for original method invocations
 	 */
 	mach_vm_address_t orgIOHibernateSystemSleep {};
 	mach_vm_address_t orgIOHibernateSystemWake {};
+	
 	mach_vm_address_t orgSetMaintenanceWakeCalendar {};
 	mach_vm_address_t orgSleepPolicyHandler {};
 	mach_vm_address_t orgPackA {};
@@ -97,6 +103,9 @@ private:
 	using t_ml_set_interrupts_enabled = boolean_t (*) (boolean_t enable);
 	t_ml_set_interrupts_enabled ml_set_interrupts_enabled {nullptr};
 	
+	using t_vprintf = int (*) (const char *fmt, va_list ap);
+	t_vprintf vprintf;
+	
 	bool    correct_pci_config_command {false};
 	
 	uint32_t  	latestStandbyDelay {0};
@@ -125,7 +134,6 @@ private:
 	int progressState {ProcessingState::NothingReady};
 	
 	NVStorage nvstorage;
-	IOPMPowerSource *power_source {nullptr};
 };
 
 #endif /* kern_hbfx_hpp */

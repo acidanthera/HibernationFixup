@@ -212,46 +212,49 @@ IOReturn HBFX::X86PlatformPlugin_sleepPolicyHandler(void * target, IOPMSystemSle
 			callbackHBFX->sleepFlags   = params->sleepFlags;
 		}
 		
-		while ((params->sleepType == kIOPMSleepTypeDeepIdle || params->sleepType == kIOPMSleepTypeStandby) && callbackHBFX->power_source)
+		auto autoHibernateMode = ADDPR(hbfx_config).autoHibernateMode;
+		while ((autoHibernateMode & Configuration::EnableAutoHibernation) &&
+			   (params->sleepType == kIOPMSleepTypeDeepIdle || params->sleepType == kIOPMSleepTypeStandby))
 		{
-			auto autoHibernateMode = ADDPR(hbfx_config).autoHibernateMode;
 			bool whenLidIsClosed = (autoHibernateMode & Configuration::WhenLidIsClosed);
-			bool whenExternalPowerIsDisconnected = (autoHibernateMode & Configuration::WhenExternalPowerIsDisconnected);
-			bool whenBatteryIsNotCharging = (autoHibernateMode & Configuration::WhenBatteryIsNotCharging);
-			bool whenBatteryIsAtWarnLevel = (autoHibernateMode & Configuration::WhenBatteryIsAtWarnLevel);
-			bool whenBatteryAtCriticalLevel = (autoHibernateMode & Configuration::WhenBatteryAtCriticalLevel);
-			int  minimalRemainingCapacity = ((autoHibernateMode & 0xF00) >> 8);
 	
-			if (callbackHBFX->power_source->batteryInstalled()) {
-				if (whenExternalPowerIsDisconnected && callbackHBFX->power_source->externalConnected()) {
+			IOPMPowerSource *power_source = callbackHBFX->getPowerSource();
+			if (power_source && power_source->batteryInstalled()) {
+				bool whenExternalPowerIsDisconnected = (autoHibernateMode & Configuration::WhenExternalPowerIsDisconnected);
+				bool whenBatteryIsNotCharging = (autoHibernateMode & Configuration::WhenBatteryIsNotCharging);
+				bool whenBatteryIsAtWarnLevel = (autoHibernateMode & Configuration::WhenBatteryIsAtWarnLevel);
+				bool whenBatteryAtCriticalLevel = (autoHibernateMode & Configuration::WhenBatteryAtCriticalLevel);
+				int  minimalRemainingCapacity = ((autoHibernateMode & 0xF00) >> 8);
+				
+				if (whenExternalPowerIsDisconnected && power_source->externalConnected()) {
 					DBGLOG("HBFX", "Auto hibernate: external is connected, do not force to hibernate");
 					break;
 				}
 	
-				if (whenBatteryIsNotCharging && callbackHBFX->power_source->isCharging()) {
+				if (whenBatteryIsNotCharging && power_source->isCharging()) {
 					DBGLOG("HBFX", "Auto hibernate: battery is charging, do not force to hibernate");
 					break;
 				}
 				
-				if (!callbackHBFX->power_source->isCharging())
+				if (!power_source->isCharging())
 				{
 					DBGLOG("HBFX", "Auto hibernate: warning level = %d, critical level = %d, capacity remaining = %d, minimal capaity = %d",
-						   callbackHBFX->power_source->atWarnLevel(), callbackHBFX->power_source->atCriticalLevel(),
-						   callbackHBFX->power_source->capacityPercentRemaining(), minimalRemainingCapacity);
-					if (whenBatteryIsAtWarnLevel && callbackHBFX->power_source->atWarnLevel()) {
-						DBGLOG("HBFX", "Auto hibernate: Battery is at warning level, capacity remaining: %d, force to hibernate", callbackHBFX->power_source->capacityPercentRemaining());
+						   power_source->atWarnLevel(), power_source->atCriticalLevel(),
+						   power_source->capacityPercentRemaining(), minimalRemainingCapacity);
+					if (whenBatteryIsAtWarnLevel && power_source->atWarnLevel()) {
+						DBGLOG("HBFX", "Auto hibernate: Battery is at warning level, capacity remaining: %d, force to hibernate", power_source->capacityPercentRemaining());
 						callbackHBFX->forceHibernate = true;
 					}
 		
-					if (whenBatteryAtCriticalLevel && callbackHBFX->power_source->atCriticalLevel()) {
-						DBGLOG("HBFX", "Auto hibernate: battery is at critical level, capacity remaining: %d, force to hibernate", callbackHBFX->power_source->capacityPercentRemaining());
+					if (whenBatteryAtCriticalLevel && power_source->atCriticalLevel()) {
+						DBGLOG("HBFX", "Auto hibernate: battery is at critical level, capacity remaining: %d, force to hibernate", power_source->capacityPercentRemaining());
 						callbackHBFX->forceHibernate = true;
 					}
 					
 					if (!callbackHBFX->forceHibernate && (whenBatteryIsAtWarnLevel || whenBatteryAtCriticalLevel) && minimalRemainingCapacity != 0 &&
-						callbackHBFX->power_source->capacityPercentRemaining() <= minimalRemainingCapacity)
+						power_source->capacityPercentRemaining() <= minimalRemainingCapacity)
 					{
-						DBGLOG("HBFX", "Auto hibernate: capacity remaining: %d less than minimal: %d, force to hibernate", callbackHBFX->power_source->capacityPercentRemaining());
+						DBGLOG("HBFX", "Auto hibernate: capacity remaining: %d less than minimal: %d, force to hibernate", power_source->capacityPercentRemaining(), minimalRemainingCapacity);
 						callbackHBFX->forceHibernate = true;
 					}
 				}
@@ -389,7 +392,6 @@ void HBFX::extendedConfigWrite16(IOService *that, UInt64 offset, UInt16 data)
 	FunctionCast(extendedConfigWrite16, callbackHBFX->orgExtendedConfigWrite16)(that, offset, data);
 }
 
-
 //==============================================================================
 
 void HBFX::processKernel(KernelPatcher &patcher)
@@ -414,12 +416,14 @@ void HBFX::processKernel(KernelPatcher &patcher)
 			};
 			if (!patcher.routeMultiple(KernelPatcher::KernelID, requests, arrsize(requests)))
 				SYSLOG("HBFX", "patcher.routeMultiple for %s is failed with error %d", requests[0].symbol, patcher.getError());
+			patcher.clearError();
 		}
 		
 		if (nvram_patches_required && initialize_nvstorage()) {
 			KernelPatcher::RouteRequest request	{"_IOHibernateSystemSleep", IOHibernateSystemSleep, orgIOHibernateSystemSleep};
 			if (!patcher.routeMultiple(KernelPatcher::KernelID, &request, 1))
 				SYSLOG("HBFX", "patcher.routeMultiple for %s is failed with error %d", request.symbol, patcher.getError());
+			patcher.clearError();
 
 			ml_at_interrupt_context = reinterpret_cast<t_ml_at_interrupt_context>(patcher.solveSymbol(KernelPatcher::KernelID, "_ml_at_interrupt_context"));
 			if (!ml_at_interrupt_context)
@@ -472,7 +476,9 @@ void HBFX::processKernel(KernelPatcher &patcher)
 					ml_get_interrupts_enabled && ml_set_interrupts_enabled)
 				{
 					KernelPatcher::RouteRequest request {"_packA", packA, orgPackA};
-					patcher.routeMultiple(KernelPatcher::KernelID, &request, 1);
+					if (!patcher.routeMultiple(KernelPatcher::KernelID, &request, 1))
+						SYSLOG("HBFX", "patcher.routeMultiple for %s is failed with error %d", request.symbol, patcher.getError());
+					patcher.clearError();
 				}
 			}
 		}
@@ -510,34 +516,20 @@ void HBFX::processKext(KernelPatcher &patcher, size_t index, mach_vm_address_t a
 					};
 
 					if (!patcher.routeMultiple(index, requests, address, size))
-						SYSLOG("HBFX", "patcher.routeMultiple for %s is failed with error %d", "IOPCIBridge", patcher.getError());
+						SYSLOG("HBFX", "patcher.routeMultiple for %s is failed with error %d", requests[0].symbol, patcher.getError());
+					patcher.clearError();
 					progressState |= ProcessingState::IOPCIFamilyRouted;
 				}
 				
 				if (auto_hibernate_mode_on && i == 1 && !(progressState & ProcessingState::X86PluginRouted))
 				{
-					auto matching = IOService::serviceMatching("IOPMPowerSource");
-					if (matching) {
-						auto matching_copy = IOService::copyMatchingService(matching);
-						power_source = OSDynamicCast(IOPMPowerSource, matching_copy);
-						matching->release();
-						if (!power_source) {
-							SYSLOG("HBFX", "failed to get IOPMPowerSource");
-							OSSafeReleaseNULL(matching_copy);
-						}
-					} else {
-						SYSLOG("HBFX", "failed to allocate IOPMPowerSource service matching");
-					}
+					KernelPatcher::RouteRequest request
+						{"__ZN17X86PlatformPlugin18sleepPolicyHandlerEPK30IOPMSystemSleepPolicyVariablesP25IOPMSystemSleepParameters", X86PlatformPlugin_sleepPolicyHandler, orgSleepPolicyHandler};
 					
-					if (power_source) {
-						KernelPatcher::RouteRequest requests[] {
-							{"__ZN17X86PlatformPlugin18sleepPolicyHandlerEPK30IOPMSystemSleepPolicyVariablesP25IOPMSystemSleepParameters", X86PlatformPlugin_sleepPolicyHandler, orgSleepPolicyHandler}
-						};
-						
-						if (!patcher.routeMultiple(index, requests, address, size))
-							SYSLOG("HBFX", "patcher.routeMultiple for %s is failed with error %d", "X86PlatformPlugin", patcher.getError());
-						progressState |= ProcessingState::X86PluginRouted;
-					}
+					if (!patcher.routeMultiple(index, &request, 1, address, size))
+						SYSLOG("HBFX", "patcher.routeMultiple for %s is failed with error %d", request.symbol, patcher.getError());
+					patcher.clearError();
+					progressState |= ProcessingState::X86PluginRouted;
 				}
 		    }
 		}
@@ -687,6 +679,10 @@ bool HBFX::initialize_nvstorage()
 
 bool HBFX::emuVariableIsDetected()
 {
+	static int detected = -1;
+	if (detected != -1)
+		return (detected == 1);
+	
 	if (gIODTPlane != nullptr)
 	{
 		auto *reg_entry = IORegistryEntry::fromPath("/options", gIODTPlane);
@@ -698,10 +694,13 @@ bool HBFX::emuVariableIsDetected()
 			if (emu_detected)
 			{
 				DBGLOG("HBFX", "EmuVariableUefiPresent is detected");
-				return true;
+				detected = 1;
 			}
 			else
+			{
 				DBGLOG("HBFX", "EmuVariableUefiPresent is not detected");
+				detected = 0;
+			}
 		}
 		else
 			SYSLOG("HBFX", "Registry entry /options cannot be found");
@@ -709,5 +708,31 @@ bool HBFX::emuVariableIsDetected()
 	else
 		SYSLOG("HBFX", "Plane %s is not found", kIODeviceTreePlane);
 	
-	return false;
+	return (detected == 1);
+}
+
+//==============================================================================
+
+IOPMPowerSource *HBFX::getPowerSource()
+{
+	static IOPMPowerSource *power_source {nullptr};
+	if (power_source == nullptr)
+	{
+		auto matching = IOService::serviceMatching("IOPMPowerSource");
+		if (matching) {
+			auto matching_copy = IOService::waitForMatchingService(matching, 1000);
+			if (!matching_copy)
+				SYSLOG("HBFX", "failed to get matching object for IOPMPowerSource");
+			power_source = OSDynamicCast(IOPMPowerSource, matching_copy);
+			matching->release();
+			if (!power_source) {
+				SYSLOG("HBFX", "failed to cast matching matching object for IOPMPowerSource to IOPMPowerSource");
+				OSSafeReleaseNULL(matching_copy);
+			}
+		} else {
+			SYSLOG("HBFX", "failed to allocate IOPMPowerSource service matching");
+		}
+	}
+	
+	return power_source;
 }
