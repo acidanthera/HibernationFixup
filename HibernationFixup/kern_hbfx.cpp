@@ -715,9 +715,9 @@ bool HBFX::emuVariableIsDetected()
 
 IOPMPowerSource *HBFX::getPowerSource()
 {
-	static int attemt_count = 5;
+	static int attempt_count = 5;
 	static IOPMPowerSource *power_source {nullptr};
-	if (power_source == nullptr && --attemt_count >= 0)
+	if (power_source == nullptr && --attempt_count >= 0)
 	{
 		auto matching = IOService::serviceMatching("IOPMPowerSource");
 		if (matching) {
