@@ -715,20 +715,23 @@ bool HBFX::emuVariableIsDetected()
 
 IOPMPowerSource *HBFX::getPowerSource()
 {
+	static int attemt_count = 5;
 	static IOPMPowerSource *power_source {nullptr};
-	if (power_source == nullptr)
+	if (power_source == nullptr && --attemt_count >= 0)
 	{
 		auto matching = IOService::serviceMatching("IOPMPowerSource");
 		if (matching) {
-			auto matching_copy = IOService::waitForMatchingService(matching, 1000);
-			if (!matching_copy)
-				SYSLOG("HBFX", "failed to get matching object for IOPMPowerSource");
-			power_source = OSDynamicCast(IOPMPowerSource, matching_copy);
-			matching->release();
-			if (!power_source) {
-				SYSLOG("HBFX", "failed to cast matching matching object for IOPMPowerSource to IOPMPowerSource");
-				OSSafeReleaseNULL(matching_copy);
+			auto service = IOService::waitForMatchingService(matching, 300);
+			if (service) {
+				power_source = OSDynamicCast(IOPMPowerSource, service);
+				if (!power_source) {
+					SYSLOG("HBFX", "failed to cast service object to IOPMPowerSource");
+					OSSafeReleaseNULL(service);
+				}
 			}
+			else
+				SYSLOG("HBFX", "failed to get service object for IOPMPowerSource");
+			matching->release();
 		} else {
 			SYSLOG("HBFX", "failed to allocate IOPMPowerSource service matching");
 		}
