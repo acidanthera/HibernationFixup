@@ -1,5 +1,8 @@
 HibernationFixup Changelog
 ============================
+#### v1.3.2
+-  Fix nvram.plist saving in Catalina, new path is used when the root folder is not writable: /System/Volumes/Data/nvram.plist
+
 #### v1.3.1
 - Code refactoring, fix duplicates in log, auto-hibernate can work without power source
 

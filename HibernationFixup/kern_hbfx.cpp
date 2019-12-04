@@ -23,6 +23,7 @@
 
 
 #define FILE_NVRAM_NAME                 "/nvram.plist"
+#define BACKUP_FILE_NVRAM_NAME          "/System/Volumes/Data/nvram.plist"
 
 // Only used in apple-driven callbacks
 static HBFX *callbackHBFX = nullptr;
@@ -114,7 +115,8 @@ IOReturn HBFX::IOHibernateSystemSleep(void)
 			else
 				SYSLOG("HBFX", "Variable %s can't be found!", kBootNextKey);
 
-			callbackHBFX->nvstorage.save(FILE_NVRAM_NAME);
+			if (!callbackHBFX->nvstorage.save(FILE_NVRAM_NAME))
+				callbackHBFX->nvstorage.save(BACKUP_FILE_NVRAM_NAME);
 
 			if (callbackHBFX->sync)
 				callbackHBFX->sync(kernproc, nullptr, nullptr);
