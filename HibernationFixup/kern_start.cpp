@@ -34,8 +34,16 @@ void Configuration::readArguments() {
 	{
 		if (PE_parse_boot_argn(bootargPatchPCIWithList, ignored_device_list, sizeof(ignored_device_list)))
 		{
-			DBGLOG("HBFX", "boot-arg %s specified, turn on PCIFamily patching", bootargPatchPCIWithList);
 			DBGLOG("HBFX", "ignored device list=%s", ignored_device_list);
+            if (strstr(ignored_device_list, "none") != nullptr ||
+                strstr(ignored_device_list, "false") != nullptr ||
+                strstr(ignored_device_list, "off") != nullptr)
+            {
+                patchPCIFamily = false;
+                DBGLOG("HBFX", "Turn off PCIFamily patching since %s contains none or false", bootargPatchPCIWithList);
+            }
+            else
+                DBGLOG("HBFX", "boot-arg %s specified, turn on PCIFamily patching", bootargPatchPCIWithList);
 		}
 		
 		if (checkKernelArgument(bootargDisablePatchPCI))

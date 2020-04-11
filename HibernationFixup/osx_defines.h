@@ -25,6 +25,9 @@
 #define kIOPMRootDomainWakeTypeSleepService     "SleepService"
 #define kIOPMRootDomainWakeTypeMaintenance      "Maintenance"
 
+#define kIOPMDeepSleepEnabledKey            "Standby Enabled"
+#define kIOPMAutoPowerOffEnabledKey         "AutoPowerOff Enabled"
+
 extern const IORegistryPlane 			*gIODTPlane;
 #define kIODeviceTreePlane              "IODeviceTree"
 

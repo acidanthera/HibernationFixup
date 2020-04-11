@@ -1,5 +1,8 @@
 HibernationFixup Changelog
 ============================
+#### v1.3.3
+- Improve auto-hibernate feature: support standby and autopoweroff separately (with respective delay). Immediate hibernate is possible with zero delay.
+
 #### v1.3.2
 -  Fix nvram.plist saving in Catalina, new path is used when the root folder is not writable: /System/Volumes/Data/nvram.plist
 

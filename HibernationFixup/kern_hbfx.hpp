@@ -106,6 +106,7 @@ private:
 	bool    correct_pci_config_command {false};
 	
 	uint32_t  	latestStandbyDelay {0};
+    uint32_t    latestPoweroffDelay {0};
 	uint32_t  	latestHibernateMode {0};
 	uint32_t  	sleepPhase {-1U};
 	uint64_t    sleepFactors {0};

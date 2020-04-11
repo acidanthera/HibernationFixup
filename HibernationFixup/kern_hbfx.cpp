@@ -2,7 +2,7 @@
 //  kern_hbfx.cpp
 //  HibernationFixup
 //
-//  Copyright © 2017 lvs1974. All rights reserved.
+//  Copyright © 2020 lvs1974. All rights reserved.
 //
 
 #include <Library/LegacyIOService.h>
@@ -71,12 +71,8 @@ IOReturn HBFX::IOHibernateSystemSleep(void)
 	DBGLOG("HBFX", "IOHibernateSystemSleep is called, result is: %x", result);
 
 	uint32_t ioHibernateState = kIOHibernateStateInactive;
-	OSData *data = OSDynamicCast(OSData, IOService::getPMRootDomain()->getProperty(kIOHibernateStateKey));
-	if (data != nullptr)
-	{
-		ioHibernateState = *((uint32_t *)data->getBytesNoCopy());
-		DBGLOG("HBFX", "Current hibernate state from IOPMRootDomain is: %d", ioHibernateState);
-	}
+    if (WIOKit::getOSDataValue(IOService::getPMRootDomain(), kIOHibernateStateKey, ioHibernateState))
+        DBGLOG("HBFX", "Current hibernate state from IOPMRootDomain is: %d", ioHibernateState);
 
 	if (result == KERN_SUCCESS || ioHibernateState == kIOHibernateStateHibernating)
 	{
@@ -165,9 +161,15 @@ IOReturn HBFX::setMaintenanceWakeCalendar(IOPMrootDomain* that, IOPMCalendarStru
 	DBGLOG("HBFX", "Calendar time %02d.%02d.%04d %02d:%02d:%02d, selector: %d", calendar->day, calendar->month, calendar->year,
 		   calendar->hour, calendar->minute, calendar->second, calendar->selector);
 	
+    uint32_t delta_time = 0;
+    if (OSDynamicCast(OSBoolean, that->getProperty(kIOPMDeepSleepEnabledKey)) == kOSBooleanTrue)
+        delta_time = callbackHBFX->latestStandbyDelay;
+    else if (OSDynamicCast(OSBoolean, that->getProperty(kIOPMAutoPowerOffEnabledKey)) == kOSBooleanTrue)
+        delta_time = callbackHBFX->latestPoweroffDelay;
+
 	callbackHBFX->wakeCalendarSet = false;
 	bool pmset_non_default_mode = (callbackHBFX->latestHibernateMode != (kIOHibernateModeOn | kIOHibernateModeSleep));
-	if (callbackHBFX->sleepPhase == 0 && callbackHBFX->latestStandbyDelay != 0 && !pmset_non_default_mode)
+	if (callbackHBFX->sleepPhase == 0 && !pmset_non_default_mode && delta_time != 0)
 	{
 		struct tm tm;
 		struct timeval tv;
@@ -175,8 +177,8 @@ IOReturn HBFX::setMaintenanceWakeCalendar(IOPMrootDomain* that, IOPMCalendarStru
 		
 		gmtime_r(tv.tv_sec, &tm);
 		DBGLOG("HBFX", "Current time: %02d.%02d.%04d %02d:%02d:%02d", tm.tm_mday, tm.tm_mon, tm.tm_year, tm.tm_hour, tm.tm_min, tm.tm_sec);
-		
-		tv.tv_sec += callbackHBFX->latestStandbyDelay;
+
+        tv.tv_sec += delta_time;
 		gmtime_r(tv.tv_sec, &tm);
 		DBGLOG("HBFX", "Postpone wake to: %02d.%02d.%04d %02d:%02d:%02d", tm.tm_mday, tm.tm_mon, tm.tm_year, tm.tm_hour, tm.tm_min, tm.tm_sec);
 		
@@ -205,6 +207,7 @@ IOReturn HBFX::X86PlatformPlugin_sleepPolicyHandler(void * target, IOPMSystemSle
 		DBGLOG("HBFX", "X86PlatformPlugin_sleepPolicyHandler ecWakeTimer: %d, ecPoweroffTimer: %d", params->ecWakeTimer, params->ecPoweroffTimer);
 		callbackHBFX->latestHibernateMode = vars->hibernateMode;
 		callbackHBFX->latestStandbyDelay  = vars->standbyDelay;
+        callbackHBFX->latestPoweroffDelay = vars->poweroffDelay;
 		callbackHBFX->sleepPhase          = vars->sleepPhase;
 		if (vars->sleepPhase == 0)
 		{
@@ -217,7 +220,7 @@ IOReturn HBFX::X86PlatformPlugin_sleepPolicyHandler(void * target, IOPMSystemSle
 		auto autoHibernateMode = ADDPR(hbfx_config).autoHibernateMode;
 		while ((autoHibernateMode & Configuration::EnableAutoHibernation) &&
 			   (params->sleepType == kIOPMSleepTypeDeepIdle || params->sleepType == kIOPMSleepTypeStandby))
-		{
+		{            
 			bool whenLidIsClosed = (autoHibernateMode & Configuration::WhenLidIsClosed);
 	
 			IOPMPowerSource *power_source = callbackHBFX->getPowerSource();
@@ -267,14 +270,14 @@ IOReturn HBFX::X86PlatformPlugin_sleepPolicyHandler(void * target, IOPMSystemSle
 				DBGLOG("HBFX", "Auto hibernate: clamshell is open, do not force to hibernate");
 				break;
 			}
-			
-			if (callbackHBFX->sleepPhase == 1 && (!callbackHBFX->wakeCalendarSet || callbackHBFX->forceHibernate))
+                    
+			if (callbackHBFX->sleepPhase < 2 && (!callbackHBFX->wakeCalendarSet || callbackHBFX->forceHibernate))
 			{
 				vars->sleepFactors = kIOPMSleepFactorStandbyForced | kIOPMSleepFactorStandbyNoDelay;
 				vars->sleepReason  = kIOPMSleepReasonLowPower;
 				params->sleepType  = kIOPMSleepTypeStandby;
 				params->sleepFlags = kIOPMSleepFlagHibernate;
-				DBGLOG("HBFX", "Auto hibernate: sleep phase 1, set hibernate values");
+				DBGLOG("HBFX", "Auto hibernate: sleep phase %d, set hibernate values", callbackHBFX->sleepPhase);
 			}
 			else if (callbackHBFX->sleepPhase == 2)
 			{
@@ -284,7 +287,7 @@ IOReturn HBFX::X86PlatformPlugin_sleepPolicyHandler(void * target, IOPMSystemSle
 					vars->sleepReason  = kIOPMSleepReasonLowPower;
 					params->sleepType  = kIOPMSleepTypeStandby;
 					params->sleepFlags = kIOPMSleepFlagHibernate;
-					DBGLOG("HBFX", "Auto hibernate: sleep phase 2, hibernate now");
+					DBGLOG("HBFX", "Auto hibernate: sleep phase %d, hibernate now", callbackHBFX->sleepPhase);
 				}
 				else
 				{
@@ -292,7 +295,7 @@ IOReturn HBFX::X86PlatformPlugin_sleepPolicyHandler(void * target, IOPMSystemSle
 					vars->sleepReason  = callbackHBFX->sleepReason;
 					params->sleepType  = callbackHBFX->sleepType;
 					params->sleepFlags = callbackHBFX->sleepFlags;
-					DBGLOG("HBFX", "Auto hibernate: sleep phase 2, postpone hibernate");
+					DBGLOG("HBFX", "Auto hibernate: sleep phase %d, postpone hibernate", callbackHBFX->sleepPhase);
 				}
 				
 				callbackHBFX->sleepServiceWake = false;
