@@ -137,11 +137,15 @@ IOReturn HBFX::IOHibernateSystemWake(void)
 	
 	OSString * wakeType = OSDynamicCast(OSString, IOService::getPMRootDomain()->getProperty(kIOPMRootDomainWakeTypeKey));
 	OSString * wakeReason = OSDynamicCast(OSString, IOService::getPMRootDomain()->getProperty(kIOPMRootDomainWakeReasonKey));
+	
+	if (result == KERN_SUCCESS)
+	{
+		DBGLOG("HBFX", "IOHibernateSystemWake: wake type is: %s", wakeType ? wakeType->getCStringNoCopy() : "null");
+		DBGLOG("HBFX", "IOHibernateSystemWake: wake reason is: %s", wakeReason ? wakeReason->getCStringNoCopy() : "null");
+	}
+
 	if (result == KERN_SUCCESS && wakeType && wakeReason)
 	{
-		DBGLOG("HBFX", "IOHibernateSystemWake: wake type is: %s", wakeType->getCStringNoCopy());
-		DBGLOG("HBFX", "IOHibernateSystemWake: wake reason is: %s", wakeReason->getCStringNoCopy());
-	
 		if (strstr(wakeReason->getCStringNoCopy(), "RTC", strlen("RTC")) &&
 			(!strcmp(wakeType->getCStringNoCopy(), kIOPMRootDomainWakeTypeSleepService) || !strcmp(wakeType->getCStringNoCopy(), kIOPMRootDomainWakeTypeMaintenance))
 			)
@@ -194,7 +198,7 @@ IOReturn HBFX::setMaintenanceWakeCalendar(IOPMrootDomain* that, IOPMCalendarStru
 
 IOReturn HBFX::X86PlatformPlugin_sleepPolicyHandler(void * target, IOPMSystemSleepPolicyVariables * vars, IOPMSystemSleepParameters * params)
 {
-	callbackHBFX->forceHibernate = false;
+	bool forceHibernate = false;
 	
 	IOReturn result = FunctionCast(X86PlatformPlugin_sleepPolicyHandler, callbackHBFX->orgSleepPolicyHandler)(target, vars, params);
 	if (result != KERN_SUCCESS)
@@ -221,8 +225,6 @@ IOReturn HBFX::X86PlatformPlugin_sleepPolicyHandler(void * target, IOPMSystemSle
 		while ((autoHibernateMode & Configuration::EnableAutoHibernation) &&
 			   (params->sleepType == kIOPMSleepTypeDeepIdle || params->sleepType == kIOPMSleepTypeStandby))
 		{            
-			bool whenLidIsClosed = (autoHibernateMode & Configuration::WhenLidIsClosed);
-	
 			IOPMPowerSource *power_source = callbackHBFX->getPowerSource();
 			if (power_source && power_source->batteryInstalled()) {
 				bool whenExternalPowerIsDisconnected = (autoHibernateMode & Configuration::WhenExternalPowerIsDisconnected);
@@ -248,30 +250,32 @@ IOReturn HBFX::X86PlatformPlugin_sleepPolicyHandler(void * target, IOPMSystemSle
 						   power_source->capacityPercentRemaining(), minimalRemainingCapacity);
 					if (whenBatteryIsAtWarnLevel && power_source->atWarnLevel()) {
 						DBGLOG("HBFX", "Auto hibernate: Battery is at warning level, capacity remaining: %d, force to hibernate", power_source->capacityPercentRemaining());
-						callbackHBFX->forceHibernate = true;
+						forceHibernate = true;
 					}
 		
 					if (whenBatteryAtCriticalLevel && power_source->atCriticalLevel()) {
 						DBGLOG("HBFX", "Auto hibernate: battery is at critical level, capacity remaining: %d, force to hibernate", power_source->capacityPercentRemaining());
-						callbackHBFX->forceHibernate = true;
+						forceHibernate = true;
 					}
 					
-					if (!callbackHBFX->forceHibernate && (whenBatteryIsAtWarnLevel || whenBatteryAtCriticalLevel) && minimalRemainingCapacity != 0 &&
+					if (!forceHibernate && (whenBatteryIsAtWarnLevel || whenBatteryAtCriticalLevel) && minimalRemainingCapacity != 0 &&
 						power_source->capacityPercentRemaining() <= minimalRemainingCapacity)
 					{
 						DBGLOG("HBFX", "Auto hibernate: capacity remaining: %d less than minimal: %d, force to hibernate", power_source->capacityPercentRemaining(), minimalRemainingCapacity);
-						callbackHBFX->forceHibernate = true;
+						forceHibernate = true;
 					}
 				}
 			}
 
+			bool whenLidIsClosed = (autoHibernateMode & Configuration::WhenLidIsClosed);
 			bool lidIsOpen = OSDynamicCast(OSBoolean, IOService::getPMRootDomain()->getProperty(kAppleClamshellStateKey)) != kOSBooleanTrue;
-			if (!callbackHBFX->forceHibernate && whenLidIsClosed && lidIsOpen) {
+			if (!forceHibernate && whenLidIsClosed && lidIsOpen) {
 				DBGLOG("HBFX", "Auto hibernate: clamshell is open, do not force to hibernate");
 				break;
 			}
-                    
-			if (callbackHBFX->sleepPhase < 2 && (!callbackHBFX->wakeCalendarSet || callbackHBFX->forceHibernate))
+            
+			bool setupHibernate = (forceHibernate || !callbackHBFX->wakeCalendarSet || callbackHBFX->sleepServiceWake);
+			if (callbackHBFX->sleepPhase < 2 && setupHibernate)
 			{
 				vars->sleepFactors = kIOPMSleepFactorStandbyForced | kIOPMSleepFactorStandbyNoDelay;
 				vars->sleepReason  = kIOPMSleepReasonLowPower;
@@ -281,7 +285,7 @@ IOReturn HBFX::X86PlatformPlugin_sleepPolicyHandler(void * target, IOPMSystemSle
 			}
 			else if (callbackHBFX->sleepPhase == 2)
 			{
-				if (callbackHBFX->forceHibernate || !callbackHBFX->wakeCalendarSet || callbackHBFX->sleepServiceWake)
+				if (setupHibernate)
 				{
 					vars->sleepFactors = kIOPMSleepFactorStandbyForced | kIOPMSleepFactorStandbyNoDelay;
 					vars->sleepReason  = kIOPMSleepReasonLowPower;
@@ -301,9 +305,10 @@ IOReturn HBFX::X86PlatformPlugin_sleepPolicyHandler(void * target, IOPMSystemSle
 				callbackHBFX->sleepServiceWake = false;
 				callbackHBFX->wakeCalendarSet  = false;
 			}
-			
-			DBGLOG("HBFX", "Auto hibernate: force hibernate...");
-			callbackHBFX->forceHibernate = true;
+			else if (forceHibernate)
+			{
+				DBGLOG("HBFX", "Auto hibernate: force hibernate...");
+			}
 			break;
 		}
 	}
@@ -371,6 +376,7 @@ IOReturn HBFX::restoreMachineState(IOService *that, IOOptionBits options, IOServ
 		callbackHBFX->correct_pci_config_command = true;
 
 	IOReturn result = FunctionCast(restoreMachineState, callbackHBFX->orgRestoreMachineState)(that, options, device);
+	DBGLOG("HBFX", "restoreMachineState returned 0x%x for device %s, options = 0x%x", result, that->getName(), options);
 
 	if (kMachineRestoreDehibernate & options)
 		callbackHBFX->correct_pci_config_command = false;

@@ -113,7 +113,6 @@ private:
 	uint32_t    sleepReason {0};
 	uint32_t    sleepType {0};
 	uint32_t    sleepFlags {0};
-	bool      	forceHibernate {false};
 	bool	  	sleepServiceWake {false};
 	bool	  	wakeCalendarSet {false};
 	
