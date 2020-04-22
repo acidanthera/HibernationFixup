@@ -221,8 +221,10 @@ IOReturn HBFX::X86PlatformPlugin_sleepPolicyHandler(void * target, IOPMSystemSle
 			callbackHBFX->sleepFlags   = params->sleepFlags;
 		}
 		
+		bool standbyEnabled = (OSDynamicCast(OSBoolean, IOService::getPMRootDomain()->getProperty(kIOPMDeepSleepEnabledKey)) == kOSBooleanTrue ||
+							   OSDynamicCast(OSBoolean, IOService::getPMRootDomain()->getProperty(kIOPMAutoPowerOffEnabledKey)) == kOSBooleanTrue);
 		auto autoHibernateMode = ADDPR(hbfx_config).autoHibernateMode;
-		while ((autoHibernateMode & Configuration::EnableAutoHibernation) &&
+		while (standbyEnabled && (autoHibernateMode & Configuration::EnableAutoHibernation) &&
 			   (params->sleepType == kIOPMSleepTypeDeepIdle || params->sleepType == kIOPMSleepTypeStandby))
 		{            
 			IOPMPowerSource *power_source = callbackHBFX->getPowerSource();
