@@ -1,5 +1,8 @@
 HibernationFixup Changelog
 ============================
+#### v1.3.4
+- Improve auto-hibernate feature: correct next wake time disregarding the current sleep phase.
+
 #### v1.3.3
 - Improve auto-hibernate feature: support standby and autopoweroff separately (with respective delay). Immediate hibernate is possible with zero delay.
 

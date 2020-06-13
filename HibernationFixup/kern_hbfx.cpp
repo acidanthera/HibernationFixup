@@ -173,7 +173,7 @@ IOReturn HBFX::setMaintenanceWakeCalendar(IOPMrootDomain* that, IOPMCalendarStru
 
 	callbackHBFX->wakeCalendarSet = false;
 	bool pmset_non_default_mode = (callbackHBFX->latestHibernateMode != (kIOHibernateModeOn | kIOHibernateModeSleep));
-	if (callbackHBFX->sleepPhase == 0 && !pmset_non_default_mode && delta_time != 0)
+	if (!pmset_non_default_mode && delta_time != 0)
 	{
 		struct tm tm;
 		struct timeval tv;
