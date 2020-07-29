@@ -207,7 +207,7 @@
 		1C748C1E1C21952C0024EED2 /* Project object */ = {
 			isa = PBXProject;
 			attributes = {
-				LastUpgradeCheck = 1100;
+				LastUpgradeCheck = 1200;
 				ORGANIZATIONNAME = vit9696;
 				TargetAttributes = {
 					1C748C261C21952C0024EED2 = {
@@ -404,6 +404,9 @@
 					"-fno-non-call-exceptions",
 					"-fno-builtin",
 					"-fno-asynchronous-unwind-tables",
+					"-Wno-unknown-warning-option",
+ 					"-Wno-ossharedptr-misuse",
+ 					"-Wno-vla",
 				);
 				OTHER_LDFLAGS = "-static";
 				PRODUCT_BUNDLE_IDENTIFIER = as.lvs1974.HibernationFixup;
@@ -452,6 +455,9 @@
 					"-fno-non-call-exceptions",
 					"-fno-builtin",
 					"-fno-asynchronous-unwind-tables",
+					"-Wno-unknown-warning-option",
+ 					"-Wno-ossharedptr-misuse",
+ 					"-Wno-vla",
 				);
 				OTHER_LDFLAGS = "-static";
 				PRODUCT_BUNDLE_IDENTIFIER = as.lvs1974.HibernationFixup;
