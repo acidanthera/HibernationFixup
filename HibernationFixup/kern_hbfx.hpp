@@ -61,6 +61,7 @@ private:
 	
 	static IOReturn     setMaintenanceWakeCalendar(IOPMrootDomain* that, IOPMCalendarStruct * calendar);
 	static IOReturn     X86PlatformPlugin_sleepPolicyHandler(void * target, IOPMSystemSleepPolicyVariables * vars, IOPMSystemSleepParameters * params);
+	static IOReturn     AppleRTC_setupDateTimeAlarm(void *that, void* rctDateTime);
 	
 	static int          packA(char *inbuf, uint32_t length, uint32_t buflen);
 	static IOReturn     restoreMachineState(IOService *that, IOOptionBits options, IOService * device);
@@ -75,6 +76,7 @@ private:
 	
 	mach_vm_address_t orgSetMaintenanceWakeCalendar {};
 	mach_vm_address_t orgSleepPolicyHandler {};
+	mach_vm_address_t orgSetupDateTimeAlarm {};
 	mach_vm_address_t orgPackA {};
 	mach_vm_address_t orgRestoreMachineState {};
 	mach_vm_address_t orgExtendedConfigWrite16 {};
@@ -103,6 +105,12 @@ private:
 	using t_ml_set_interrupts_enabled = boolean_t (*) (boolean_t enable);
 	t_ml_set_interrupts_enabled ml_set_interrupts_enabled {nullptr};
 	
+	using t_convertDateTimeToSeconds = int64_t (*) (void *rctDateTime);
+	t_convertDateTimeToSeconds convertDateTimeToSeconds {nullptr};
+	
+	using t_convertSecondsToDateTime = int64_t (*) (int64_t seconds, void *rctDateTime);
+	t_convertSecondsToDateTime convertSecondsToDateTime {nullptr};
+	
 	bool    correct_pci_config_command {false};
 	
 	uint32_t  	latestStandbyDelay {0};
@@ -124,8 +132,9 @@ private:
 			NothingReady = 0,
 			IOPCIFamilyRouted = 1,
 			KernelRouted = 2,
-			X86PluginRouted = 4,
-			EverythingDone = IOPCIFamilyRouted | KernelRouted | X86PluginRouted,
+			AppleRTCRouted = 4,
+			X86PluginRouted = 8,
+			EverythingDone = IOPCIFamilyRouted | KernelRouted | AppleRTCRouted | X86PluginRouted,
 		};
 	};
 	int progressState {ProcessingState::NothingReady};

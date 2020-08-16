@@ -29,11 +29,13 @@
 static HBFX *callbackHBFX = nullptr;
 
 static const char *kextIOPCIFamilyPath[]   { "/System/Library/Extensions/IOPCIFamily.kext/IOPCIFamily" };
+static const char *kextAppleRTCPath[]      { "/System/Library/Extensions/AppleRTC.kext/Contents/MacOS/AppleRTC" };
 static const char *kextX86PlatformPlugin[] { "/System/Library/Extensions/IOPlatformPluginFamily.kext/Contents/PlugIns/X86PlatformPlugin.kext/Contents/MacOS/X86PlatformPlugin" };
 
 static KernelPatcher::KextInfo kextList[] {
 	{"com.apple.iokit.IOPCIFamily",        kextIOPCIFamilyPath,   arrsize(kextIOPCIFamilyPath),   {true}, {}, KernelPatcher::KextInfo::Unloaded},
-	{"com.apple.driver.X86PlatformPlugin", kextX86PlatformPlugin, arrsize(kextX86PlatformPlugin), {true}, {}, KernelPatcher::KextInfo::Unloaded}
+	{"com.apple.driver.AppleRTC",          kextAppleRTCPath,      arrsize(kextAppleRTCPath),      {true}, {}, KernelPatcher::KextInfo::Unloaded},
+	{"com.apple.driver.X86PlatformPlugin", kextX86PlatformPlugin, arrsize(kextX86PlatformPlugin), {true}, {}, KernelPatcher::KextInfo::Unloaded},
 };
 
 //==============================================================================
@@ -184,7 +186,7 @@ IOReturn HBFX::setMaintenanceWakeCalendar(IOPMrootDomain* that, IOPMCalendarStru
 
         tv.tv_sec += delta_time;
 		gmtime_r(tv.tv_sec, &tm);
-		DBGLOG("HBFX", "Postpone wake to: %02d.%02d.%04d %02d:%02d:%02d", tm.tm_mday, tm.tm_mon, tm.tm_year, tm.tm_hour, tm.tm_min, tm.tm_sec);
+		DBGLOG("HBFX", "Postpone maintenance wake to: %02d.%02d.%04d %02d:%02d:%02d", tm.tm_mday, tm.tm_mon, tm.tm_year, tm.tm_hour, tm.tm_min, tm.tm_sec);
 		
 		*calendar = { static_cast<UInt32>(tm.tm_year), static_cast<UInt8>(tm.tm_mon), static_cast<UInt8>(tm.tm_mday),
 			static_cast<UInt8>(tm.tm_hour), static_cast<UInt8>(tm.tm_min), static_cast<UInt8>(tm.tm_sec), calendar->selector };
@@ -316,6 +318,43 @@ IOReturn HBFX::X86PlatformPlugin_sleepPolicyHandler(void * target, IOPMSystemSle
 	}
 
 	return result;
+}
+
+//==============================================================================
+
+IOReturn HBFX::AppleRTC_setupDateTimeAlarm(void *that, void* rctDateTime)
+{
+	DBGLOG("HBFX", "AppleRTC_setupDateTimeAlarm is called, set alarm to seconds: %lld", callbackHBFX->convertDateTimeToSeconds(rctDateTime));
+	
+	IOPMrootDomain * pmRootDomain = reinterpret_cast<IOService*>(that)->getPMRootDomain();
+	if (pmRootDomain) {
+		uint32_t delta_time = 0;
+		if (OSDynamicCast(OSBoolean, pmRootDomain->getProperty(kIOPMDeepSleepEnabledKey)) == kOSBooleanTrue)
+			delta_time = callbackHBFX->latestStandbyDelay;
+		else if (OSDynamicCast(OSBoolean, pmRootDomain->getProperty(kIOPMAutoPowerOffEnabledKey)) == kOSBooleanTrue)
+			delta_time = callbackHBFX->latestPoweroffDelay;
+
+		bool pmset_non_default_mode = (callbackHBFX->latestHibernateMode != (kIOHibernateModeOn | kIOHibernateModeSleep));
+		if (!pmset_non_default_mode && delta_time != 0)
+		{
+			struct tm tm;
+			struct timeval tv;
+			microtime(&tv);
+			
+			gmtime_r(tv.tv_sec, &tm);
+			DBGLOG("HBFX", "Current time: %02d.%02d.%04d %02d:%02d:%02d", tm.tm_mday, tm.tm_mon, tm.tm_year, tm.tm_hour, tm.tm_min, tm.tm_sec);
+
+			tv.tv_sec += delta_time;
+			gmtime_r(tv.tv_sec, &tm);
+			DBGLOG("HBFX", "Postpone RTC wake to: %02d.%02d.%04d %02d:%02d:%02d", tm.tm_mday, tm.tm_mon, tm.tm_year, tm.tm_hour, tm.tm_min, tm.tm_sec);
+			
+			callbackHBFX->convertSecondsToDateTime(tv.tv_sec, rctDateTime);
+		}
+	}
+	else
+		SYSLOG("HBFX", "IOPMrootDomain cannot be obtained from AppleRTC");
+	
+	return FunctionCast(AppleRTC_setupDateTimeAlarm, callbackHBFX->orgSetupDateTimeAlarm)(that, rctDateTime);
 }
 
 //==============================================================================
@@ -534,7 +573,32 @@ void HBFX::processKext(KernelPatcher &patcher, size_t index, mach_vm_address_t a
 					progressState |= ProcessingState::IOPCIFamilyRouted;
 				}
 				
-				if (auto_hibernate_mode_on && i == 1 && !(progressState & ProcessingState::X86PluginRouted))
+				if (auto_hibernate_mode_on && i == 1 && !(progressState & ProcessingState::AppleRTCRouted))
+				{
+					convertDateTimeToSeconds = reinterpret_cast<t_convertDateTimeToSeconds>(patcher.solveSymbol(index, "__ZL24convertDateTimeToSecondsPK11RTCDateTime"));
+					if (!convertDateTimeToSeconds) {
+						SYSLOG("HBFX", "failed to resolve __ZL24convertDateTimeToSecondsPK11RTCDateTime %d", patcher.getError());
+						patcher.clearError();
+					}
+
+					convertSecondsToDateTime = reinterpret_cast<t_convertSecondsToDateTime>(patcher.solveSymbol(index, "__ZL24convertSecondsToDateTimelP11RTCDateTime"));
+					if (!convertSecondsToDateTime) {
+						SYSLOG("HBFX", "failed to resolve __ZL24convertSecondsToDateTimelP11RTCDateTime %d", patcher.getError());
+						patcher.clearError();
+					}
+					
+					if (convertDateTimeToSeconds && convertSecondsToDateTime) {
+						KernelPatcher::RouteRequest request
+							{"__ZN8AppleRTC18setupDateTimeAlarmEPK11RTCDateTime", AppleRTC_setupDateTimeAlarm, orgSetupDateTimeAlarm};
+						
+						if (!patcher.routeMultiple(index, &request, 1, address, size))
+							SYSLOG("HBFX", "patcher.routeMultiple for %s is failed with error %d", request.symbol, patcher.getError());
+						patcher.clearError();
+					}
+					progressState |= ProcessingState::AppleRTCRouted;
+				}
+				
+				if (auto_hibernate_mode_on && i == 2 && !(progressState & ProcessingState::X86PluginRouted))
 				{
 					KernelPatcher::RouteRequest request
 						{"__ZN17X86PlatformPlugin18sleepPolicyHandlerEPK30IOPMSystemSleepPolicyVariablesP25IOPMSystemSleepParameters", X86PlatformPlugin_sleepPolicyHandler, orgSleepPolicyHandler};

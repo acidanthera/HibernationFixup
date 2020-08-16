@@ -1,5 +1,9 @@
 HibernationFixup Changelog
 ============================
+#### v1.3.5
+- Postpone RTC wake in AppleRTC::setupDateTimeAlarm according to current standby/autopoweroff delay (if auto-hibernate feature and standby/autopoweroff is on)
+in order to avoid earlier wake.
+
 #### v1.3.4
 - Improve auto-hibernate feature: correct next wake time disregarding the current sleep phase.
 - Added constants for 11.0 support.
