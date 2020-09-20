@@ -5,8 +5,8 @@
 //  Copyright © 2020 lvs1974. All rights reserved.
 //
 
-#include <Library/LegacyIOService.h>
-#include "LegacyRootDomain.h"
+#include <IOKit/IOService.h>
+#include <IOKit/pwr_mgt/RootDomain.h>
 
 #include <Headers/kern_api.hpp>
 #include <Headers/kern_file.hpp>

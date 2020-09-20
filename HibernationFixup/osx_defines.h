@@ -8,6 +8,11 @@
 #ifndef osx_defines_h
 #define osx_defines_h
 
+#include <IOKit/IOKitKeys.h>
+#include <IOKit/IODeviceTreeSupport.h>
+#include <IOKit/pwr_mgt/IOPM.h>
+#include <IOKit/pci/IOPCIFamilyDefinitions.h>
+
 #define kIOHibernateStateKey            "IOHibernateState"
 #define kIOHibernateRTCVariablesKey     "IOHibernateRTCVariables"
 #define kIOHibernateSMCVariablesKey     "IOHibernateSMCVariables"
@@ -17,20 +22,11 @@
 #define kGlobalBoot0082Key              NVRAM_PREFIX(NVRAM_GLOBAL_GUID, kBoot0082Key)
 #define kGlobalBootNextKey              NVRAM_PREFIX(NVRAM_GLOBAL_GUID, kBootNextKey)
 
-#define kAppleClamshellStateKey         "AppleClamshellState"
-#define kAppleClamshellCausesSleepKey   "AppleClamshellCausesSleep"
 #define kAppleSleepDisabled				"SleepDisabled"
 
-#define kIOPMRootDomainWakeReasonKey    		"Wake Reason"
 #define kIOPMRootDomainWakeTypeSleepService     "SleepService"
 #define kIOPMRootDomainWakeTypeMaintenance      "Maintenance"
-
-#define kIOPMDeepSleepEnabledKey            "Standby Enabled"
 #define kIOPMAutoPowerOffEnabledKey         "AutoPowerOff Enabled"
-
-extern const IORegistryPlane 			*gIODTPlane;
-#define kIODeviceTreePlane              "IODeviceTree"
-
 
 struct IOPMSystemSleepPolicyVariables
 {
@@ -107,21 +103,6 @@ enum
 	kMachineRestoreEarlyDevices = 0x00000002,
 	kMachineRestoreDehibernate  = 0x00000004,
 	kMachineRestoreTunnels      = 0x00000008,
-};
-
-/* Command register definitions */
-enum {
-	kIOPCICommandIOSpace                = 0x0001,
-	kIOPCICommandMemorySpace            = 0x0002,
-	kIOPCICommandBusMaster              = 0x0004,
-	kIOPCICommandSpecialCycles          = 0x0008,
-	kIOPCICommandMemWrInvalidate        = 0x0010,
-	kIOPCICommandPaletteSnoop           = 0x0020,
-	kIOPCICommandParityError            = 0x0040,
-	kIOPCICommandAddressStepping        = 0x0080,
-	kIOPCICommandSERR                   = 0x0100,
-	kIOPCICommandFastBack2Back          = 0x0200,
-	kIOPCICommandInterruptDisable       = 0x0400
 };
 
 // System Sleep Types
