@@ -1,5 +1,8 @@
 HibernationFixup Changelog
 ============================
+#### v1.3.6
+- Added MacKernelSDK with Xcode 12 compatibility
+
 #### v1.3.5
 - Postpone RTC wake in AppleRTC::setupDateTimeAlarm according to current standby/autopoweroff delay (if auto-hibernate feature and standby/autopoweroff is on)
 in order to avoid earlier wake.
