@@ -1,7 +1,9 @@
 HibernationFixup Changelog
 ============================
-#### v1.3.6
+#### v1.3.7
 - Refactoring, setup next RTC wake manually if IOPMrootDomain::setMaintenanceWakeCalendar was not called before sleep
+
+#### v1.3.6
 - Added MacKernelSDK with Xcode 12 compatibility
 
 #### v1.3.5
