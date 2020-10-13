@@ -53,15 +53,16 @@ private:
 	
 	// return pointer to IOPMPowerSource
 	IOPMPowerSource *getPowerSource();
+
 	/**
 	 *  Hooked methods / callbacks
 	 */
 	static IOReturn     IOHibernateSystemSleep(void);
 	static IOReturn     IOHibernateSystemWake(void);
 	
-	static IOReturn     setMaintenanceWakeCalendar(IOPMrootDomain* that, IOPMCalendarStruct * calendar);
-	static IOReturn     X86PlatformPlugin_sleepPolicyHandler(void * target, IOPMSystemSleepPolicyVariables * vars, IOPMSystemSleepParameters * params);
+	static IOReturn     IOPMrootDomain_setMaintenanceWakeCalendar(IOPMrootDomain* that, IOPMCalendarStruct * calendar);
 	static IOReturn     AppleRTC_setupDateTimeAlarm(void *that, void* rctDateTime);
+	static IOReturn     X86PlatformPlugin_sleepPolicyHandler(void * target, IOPMSystemSleepPolicyVariables * vars, IOPMSystemSleepParameters * params);
 	
 	static int          packA(char *inbuf, uint32_t length, uint32_t buflen);
 	static IOReturn     restoreMachineState(IOService *that, IOOptionBits options, IOService * device);

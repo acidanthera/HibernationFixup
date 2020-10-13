@@ -162,16 +162,18 @@ IOReturn HBFX::IOHibernateSystemWake(void)
 
 //==============================================================================
 
-IOReturn HBFX::setMaintenanceWakeCalendar(IOPMrootDomain* that, IOPMCalendarStruct * calendar)
+IOReturn HBFX::IOPMrootDomain_setMaintenanceWakeCalendar(IOPMrootDomain* that, IOPMCalendarStruct * calendar)
 {
 	DBGLOG("HBFX", "Calendar time %02d.%02d.%04d %02d:%02d:%02d, selector: %d", calendar->day, calendar->month, calendar->year,
 		   calendar->hour, calendar->minute, calendar->second, calendar->selector);
 	
-    uint32_t delta_time = 0;
-    if (OSDynamicCast(OSBoolean, that->getProperty(kIOPMDeepSleepEnabledKey)) == kOSBooleanTrue)
-        delta_time = callbackHBFX->latestStandbyDelay;
-    else if (OSDynamicCast(OSBoolean, that->getProperty(kIOPMAutoPowerOffEnabledKey)) == kOSBooleanTrue)
-        delta_time = callbackHBFX->latestPoweroffDelay;
+	IOReturn result = KERN_SUCCESS;
+	
+	uint32_t delta_time = 0;
+	if (OSDynamicCast(OSBoolean, that->getProperty(kIOPMDeepSleepEnabledKey)) == kOSBooleanTrue)
+		delta_time = callbackHBFX->latestStandbyDelay;
+	else if (OSDynamicCast(OSBoolean, that->getProperty(kIOPMAutoPowerOffEnabledKey)) == kOSBooleanTrue)
+		delta_time = callbackHBFX->latestPoweroffDelay;
 
 	callbackHBFX->wakeCalendarSet = false;
 	bool pmset_non_default_mode = (callbackHBFX->latestHibernateMode != (kIOHibernateModeOn | kIOHibernateModeSleep));
@@ -190,10 +192,50 @@ IOReturn HBFX::setMaintenanceWakeCalendar(IOPMrootDomain* that, IOPMCalendarStru
 		
 		*calendar = { static_cast<UInt32>(tm.tm_year), static_cast<UInt8>(tm.tm_mon), static_cast<UInt8>(tm.tm_mday),
 			static_cast<UInt8>(tm.tm_hour), static_cast<UInt8>(tm.tm_min), static_cast<UInt8>(tm.tm_sec), calendar->selector };
-		callbackHBFX->wakeCalendarSet = true;
+		result = FunctionCast(IOPMrootDomain_setMaintenanceWakeCalendar, callbackHBFX->orgSetMaintenanceWakeCalendar)(that, calendar);
+		callbackHBFX->wakeCalendarSet = (result == KERN_SUCCESS);
 	}
+	else
+		result = FunctionCast(IOPMrootDomain_setMaintenanceWakeCalendar, callbackHBFX->orgSetMaintenanceWakeCalendar)(that, calendar);
 	
-	return FunctionCast(setMaintenanceWakeCalendar, callbackHBFX->orgSetMaintenanceWakeCalendar)(that, calendar);
+	return result;
+}
+
+//==============================================================================
+
+IOReturn HBFX::AppleRTC_setupDateTimeAlarm(void *that, void* rctDateTime)
+{
+	DBGLOG("HBFX", "AppleRTC_setupDateTimeAlarm is called, set alarm to seconds: %lld", callbackHBFX->convertDateTimeToSeconds(rctDateTime));
+	
+	IOPMrootDomain * pmRootDomain = reinterpret_cast<IOService*>(that)->getPMRootDomain();
+	if (pmRootDomain) {
+		uint32_t delta_time = 0;
+		if (OSDynamicCast(OSBoolean, pmRootDomain->getProperty(kIOPMDeepSleepEnabledKey)) == kOSBooleanTrue)
+			delta_time = callbackHBFX->latestStandbyDelay;
+		else if (OSDynamicCast(OSBoolean, pmRootDomain->getProperty(kIOPMAutoPowerOffEnabledKey)) == kOSBooleanTrue)
+			delta_time = callbackHBFX->latestPoweroffDelay;
+
+		bool pmset_non_default_mode = (callbackHBFX->latestHibernateMode != (kIOHibernateModeOn | kIOHibernateModeSleep));
+		if (!pmset_non_default_mode && delta_time != 0)
+		{
+			struct tm tm;
+			struct timeval tv;
+			microtime(&tv);
+			
+			gmtime_r(tv.tv_sec, &tm);
+			DBGLOG("HBFX", "Current time: %02d.%02d.%04d %02d:%02d:%02d", tm.tm_mday, tm.tm_mon, tm.tm_year, tm.tm_hour, tm.tm_min, tm.tm_sec);
+
+			tv.tv_sec += delta_time;
+			gmtime_r(tv.tv_sec, &tm);
+			DBGLOG("HBFX", "Postpone RTC wake to: %02d.%02d.%04d %02d:%02d:%02d", tm.tm_mday, tm.tm_mon, tm.tm_year, tm.tm_hour, tm.tm_min, tm.tm_sec);
+			
+			callbackHBFX->convertSecondsToDateTime(tv.tv_sec, rctDateTime);
+		}
+	}
+	else
+		SYSLOG("HBFX", "IOPMrootDomain cannot be obtained from AppleRTC");
+	
+	return FunctionCast(AppleRTC_setupDateTimeAlarm, callbackHBFX->orgSetupDateTimeAlarm)(that, rctDateTime);
 }
 
 //==============================================================================
@@ -223,8 +265,9 @@ IOReturn HBFX::X86PlatformPlugin_sleepPolicyHandler(void * target, IOPMSystemSle
 			callbackHBFX->sleepFlags   = params->sleepFlags;
 		}
 		
-		bool standbyEnabled = (OSDynamicCast(OSBoolean, IOService::getPMRootDomain()->getProperty(kIOPMDeepSleepEnabledKey)) == kOSBooleanTrue ||
-							   OSDynamicCast(OSBoolean, IOService::getPMRootDomain()->getProperty(kIOPMAutoPowerOffEnabledKey)) == kOSBooleanTrue);
+		bool deepSleepEnabled = OSDynamicCast(OSBoolean, IOService::getPMRootDomain()->getProperty(kIOPMDeepSleepEnabledKey)) == kOSBooleanTrue;
+		bool autoPowerOffEnabled = OSDynamicCast(OSBoolean, IOService::getPMRootDomain()->getProperty(kIOPMAutoPowerOffEnabledKey)) == kOSBooleanTrue;
+		bool standbyEnabled = deepSleepEnabled || autoPowerOffEnabled;
 		auto autoHibernateMode = ADDPR(hbfx_config).autoHibernateMode;
 		while (standbyEnabled && (autoHibernateMode & Configuration::EnableAutoHibernation) &&
 			   (params->sleepType == kIOPMSleepTypeDeepIdle || params->sleepType == kIOPMSleepTypeStandby))
@@ -277,12 +320,29 @@ IOReturn HBFX::X86PlatformPlugin_sleepPolicyHandler(void * target, IOPMSystemSle
 				DBGLOG("HBFX", "Auto hibernate: clamshell is open, do not force to hibernate");
 				break;
 			}
-            
+
+			uint32_t delta_time = 0;
+			if (deepSleepEnabled)
+				delta_time = callbackHBFX->latestStandbyDelay;
+			else if (autoPowerOffEnabled)
+				delta_time = callbackHBFX->latestPoweroffDelay;
+			bool pmset_non_default_mode = (callbackHBFX->latestHibernateMode != (kIOHibernateModeOn | kIOHibernateModeSleep));
+			if (!pmset_non_default_mode && !forceHibernate && !callbackHBFX->wakeCalendarSet && delta_time != 0)
+			{
+				struct tm tm;
+				struct timeval tv;
+				microtime(&tv);
+				gmtime_r(tv.tv_sec, &tm);
+				IOPMCalendarStruct calendar {(UInt32)tm.tm_year, (UInt8)tm.tm_mon, (UInt8)tm.tm_mday, (UInt8)tm.tm_hour, (UInt8)tm.tm_min, (UInt8)tm.tm_sec, (UInt8)kPMCalendarTypeMaintenance};
+				DBGLOG("HBFX", "call setMaintenanceWakeCalendar explicitly");
+				IOPMrootDomain_setMaintenanceWakeCalendar(IOService::getPMRootDomain(), &calendar);
+			}
+
 			bool setupHibernate = (forceHibernate || !callbackHBFX->wakeCalendarSet || callbackHBFX->sleepServiceWake);
 			if (callbackHBFX->sleepPhase < 2 && setupHibernate)
 			{
-				vars->sleepFactors = kIOPMSleepFactorStandbyForced | kIOPMSleepFactorStandbyNoDelay;
-				vars->sleepReason  = kIOPMSleepReasonLowPower;
+				vars->sleepFactors = callbackHBFX->sleepFactors;
+				vars->sleepReason  = callbackHBFX->sleepReason;
 				params->sleepType  = kIOPMSleepTypeStandby;
 				params->sleepFlags = kIOPMSleepFlagHibernate;
 				DBGLOG("HBFX", "Auto hibernate: sleep phase %d, set hibernate values", callbackHBFX->sleepPhase);
@@ -291,9 +351,9 @@ IOReturn HBFX::X86PlatformPlugin_sleepPolicyHandler(void * target, IOPMSystemSle
 			{
 				if (setupHibernate)
 				{
-					vars->sleepFactors = kIOPMSleepFactorStandbyForced | kIOPMSleepFactorStandbyNoDelay;
-					vars->sleepReason  = kIOPMSleepReasonLowPower;
-					params->sleepType  = kIOPMSleepTypeStandby;
+					vars->sleepFactors = callbackHBFX->sleepFactors;
+					vars->sleepReason  = callbackHBFX->sleepReason;
+					params->sleepType  = kIOPMSleepTypeHibernate;
 					params->sleepFlags = kIOPMSleepFlagHibernate;
 					DBGLOG("HBFX", "Auto hibernate: sleep phase %d, hibernate now", callbackHBFX->sleepPhase);
 				}
@@ -318,43 +378,6 @@ IOReturn HBFX::X86PlatformPlugin_sleepPolicyHandler(void * target, IOPMSystemSle
 	}
 
 	return result;
-}
-
-//==============================================================================
-
-IOReturn HBFX::AppleRTC_setupDateTimeAlarm(void *that, void* rctDateTime)
-{
-	DBGLOG("HBFX", "AppleRTC_setupDateTimeAlarm is called, set alarm to seconds: %lld", callbackHBFX->convertDateTimeToSeconds(rctDateTime));
-	
-	IOPMrootDomain * pmRootDomain = reinterpret_cast<IOService*>(that)->getPMRootDomain();
-	if (pmRootDomain) {
-		uint32_t delta_time = 0;
-		if (OSDynamicCast(OSBoolean, pmRootDomain->getProperty(kIOPMDeepSleepEnabledKey)) == kOSBooleanTrue)
-			delta_time = callbackHBFX->latestStandbyDelay;
-		else if (OSDynamicCast(OSBoolean, pmRootDomain->getProperty(kIOPMAutoPowerOffEnabledKey)) == kOSBooleanTrue)
-			delta_time = callbackHBFX->latestPoweroffDelay;
-
-		bool pmset_non_default_mode = (callbackHBFX->latestHibernateMode != (kIOHibernateModeOn | kIOHibernateModeSleep));
-		if (!pmset_non_default_mode && delta_time != 0)
-		{
-			struct tm tm;
-			struct timeval tv;
-			microtime(&tv);
-			
-			gmtime_r(tv.tv_sec, &tm);
-			DBGLOG("HBFX", "Current time: %02d.%02d.%04d %02d:%02d:%02d", tm.tm_mday, tm.tm_mon, tm.tm_year, tm.tm_hour, tm.tm_min, tm.tm_sec);
-
-			tv.tv_sec += delta_time;
-			gmtime_r(tv.tv_sec, &tm);
-			DBGLOG("HBFX", "Postpone RTC wake to: %02d.%02d.%04d %02d:%02d:%02d", tm.tm_mday, tm.tm_mon, tm.tm_year, tm.tm_hour, tm.tm_min, tm.tm_sec);
-			
-			callbackHBFX->convertSecondsToDateTime(tv.tv_sec, rctDateTime);
-		}
-	}
-	else
-		SYSLOG("HBFX", "IOPMrootDomain cannot be obtained from AppleRTC");
-	
-	return FunctionCast(AppleRTC_setupDateTimeAlarm, callbackHBFX->orgSetupDateTimeAlarm)(that, rctDateTime);
 }
 
 //==============================================================================
@@ -463,7 +486,7 @@ void HBFX::processKernel(KernelPatcher &patcher)
 	{
 		if (auto_hibernate_mode_on) {
 			KernelPatcher::RouteRequest requests[] = {
-				{"__ZN14IOPMrootDomain26setMaintenanceWakeCalendarEPK18IOPMCalendarStruct", setMaintenanceWakeCalendar, orgSetMaintenanceWakeCalendar},
+				{"__ZN14IOPMrootDomain26setMaintenanceWakeCalendarEPK18IOPMCalendarStruct", IOPMrootDomain_setMaintenanceWakeCalendar, orgSetMaintenanceWakeCalendar},
 				{"_IOHibernateSystemWake", IOHibernateSystemWake, orgIOHibernateSystemWake}
 			};
 			if (!patcher.routeMultiple(KernelPatcher::KernelID, requests, arrsize(requests)))

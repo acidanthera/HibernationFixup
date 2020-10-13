@@ -1,5 +1,8 @@
 HibernationFixup Changelog
 ============================
+#### v1.3.6
+- Refactoring, setup next RTC wake manually if IOPMrootDomain::setMaintenanceWakeCalendar was not called before sleep
+
 #### v1.3.5
 - Postpone RTC wake in AppleRTC::setupDateTimeAlarm according to current standby/autopoweroff delay (if auto-hibernate feature and standby/autopoweroff is on)
 in order to avoid earlier wake.

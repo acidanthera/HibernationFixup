@@ -163,5 +163,4 @@ enum {
 	kIOPMSleepFlagSleepTimerEnable  = 0x00000002
 };
 
-
 #endif /* osx_defines_h */
