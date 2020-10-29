@@ -156,11 +156,7 @@ IOReturn HBFX::IOHibernateSystemWake(void)
 			DBGLOG("HBFX", "IOHibernateSystemWake: Maintenance/SleepService wake");
 			
 			if (callbackHBFX->privateSleepSystem)
-			{
-				result = callbackHBFX->privateSleepSystem(IOService::getPMRootDomain(), kIOPMSleepReasonSleepServiceExit);
-				DBGLOG("HBFX", "IOHibernateSystemWake: privateSleepSystem returned 0x%x", result);
-				result = KERN_SUCCESS;
-			}
+				callbackHBFX->privateSleepSystem(IOService::getPMRootDomain(), kIOPMSleepReasonSleepServiceExit);
 		}
 	}
 	
