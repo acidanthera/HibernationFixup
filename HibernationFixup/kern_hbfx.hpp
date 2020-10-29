@@ -36,21 +36,21 @@ private:
 	 *  @param size    kinfo memory size
 	 */
 	void processKext(KernelPatcher &patcher, size_t index, mach_vm_address_t address, size_t size);
-	
+
 	/**
 	 *  Check the second RTC memory bank availability
 	 */
 	bool checkRTCExtendedMemory();
-	
+
 	/**
 	 *  Initialize NVStorage
 	 *
 	 */
 	bool initialize_nvstorage();
-	
+
 	// detect whether emuVariable driver exists
 	bool emuVariableIsDetected();
-	
+
 	// return pointer to IOPMPowerSource
 	IOPMPowerSource *getPowerSource();
 
@@ -63,18 +63,18 @@ private:
 	static IOReturn     IOPMrootDomain_setMaintenanceWakeCalendar(IOPMrootDomain* that, IOPMCalendarStruct * calendar);
 	static IOReturn     AppleRTC_setupDateTimeAlarm(void *that, void* rctDateTime);
 	static IOReturn     X86PlatformPlugin_sleepPolicyHandler(void * target, IOPMSystemSleepPolicyVariables * vars, IOPMSystemSleepParameters * params);
-	
+
 	static int          packA(char *inbuf, uint32_t length, uint32_t buflen);
 	static IOReturn     restoreMachineState(IOService *that, IOOptionBits options, IOService * device);
 	static void         extendedConfigWrite16(IOService *that, UInt64 offset, UInt16 data);
 
-	
+
 	/**
 	 *  Trampolines for original method invocations
 	 */
 	mach_vm_address_t orgIOHibernateSystemSleep {};
 	mach_vm_address_t orgIOHibernateSystemWake {};
-	
+
 	mach_vm_address_t orgSetMaintenanceWakeCalendar {};
 	mach_vm_address_t orgSleepPolicyHandler {};
 	mach_vm_address_t orgSetupDateTimeAlarm {};
@@ -87,7 +87,7 @@ private:
 	 */
 	using t_sync = int (*) (__unused proc_t p, __unused struct sync_args *uap, __unused int32_t *retval);
 	t_sync sync {nullptr};
-	
+
 	using t_preemption_enabled = boolean_t (*) (void);
 	t_preemption_enabled preemption_enabled {nullptr};
 
@@ -112,10 +112,14 @@ private:
 	using t_convertSecondsToDateTime = int64_t (*) (int64_t seconds, void *rctDateTime);
 	t_convertSecondsToDateTime convertSecondsToDateTime {nullptr};
 	
-	bool    correct_pci_config_command {false};
+	using t_privateSleepSystem = IOReturn (*) (IOPMrootDomain* that, uint32_t sleepReason);
+	t_privateSleepSystem privateSleepSystem {nullptr};
+
 	
+	bool    correct_pci_config_command {false};
+
 	uint32_t  	latestStandbyDelay {0};
-    uint32_t    latestPoweroffDelay {0};
+	uint32_t    latestPoweroffDelay {0};
 	uint32_t  	latestHibernateMode {0};
 	uint32_t  	sleepPhase {-1U};
 	uint64_t    sleepFactors {0};
@@ -124,7 +128,7 @@ private:
 	uint32_t    sleepFlags {0};
 	bool	  	sleepServiceWake {false};
 	bool	  	wakeCalendarSet {false};
-	
+
 	/**
 	 *  Current progress mask
 	 */

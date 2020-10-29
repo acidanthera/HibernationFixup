@@ -163,4 +163,20 @@ enum {
 	kIOPMSleepFlagSleepTimerEnable  = 0x00000002
 };
 
+// Sleep phases
+enum {
+    kIOPMSleepPhase0 = 0,
+    kIOPMSleepPhase1,
+    kIOPMSleepPhase2
+};
+
+
+// hibernate_write_image return values
+enum{
+	kIOHibernatePostWriteSleep   = 0,
+	kIOHibernatePostWriteWake    = 1,
+	kIOHibernatePostWriteHalt    = 2,
+	kIOHibernatePostWriteRestart = 3
+};
+
 #endif /* osx_defines_h */
