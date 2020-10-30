@@ -11,6 +11,7 @@
 #include <Headers/kern_patcher.hpp>
 #include <Headers/kern_nvram.hpp>
 #include <IOKit/pwr_mgt/IOPMPowerSource.h>
+#include <IOKit/IOWorkLoop.h>
 
 #include "osx_defines.h"
 
@@ -112,10 +113,6 @@ private:
 	using t_convertSecondsToDateTime = int64_t (*) (int64_t seconds, void *rctDateTime);
 	t_convertSecondsToDateTime convertSecondsToDateTime {nullptr};
 	
-	using t_privateSleepSystem = IOReturn (*) (IOPMrootDomain* that, uint32_t sleepReason);
-	t_privateSleepSystem privateSleepSystem {nullptr};
-
-	
 	bool    correct_pci_config_command {false};
 
 	uint32_t  	latestStandbyDelay {0};
@@ -145,6 +142,8 @@ private:
 	int progressState {ProcessingState::NothingReady};
 	
 	NVStorage nvstorage;
+	IOWorkLoop *workLoop {};
+	IOTimerEventSource *nextSleepTimer {};
 };
 
 #endif /* kern_hbfx_hpp */

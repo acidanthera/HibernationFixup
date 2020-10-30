@@ -7,6 +7,7 @@
 
 #include <IOKit/IOService.h>
 #include <IOKit/pwr_mgt/RootDomain.h>
+#include <IOKit/IOTimerEventSource.h>
 
 #include <Headers/kern_api.hpp>
 #include <Headers/kern_file.hpp>
@@ -131,8 +132,16 @@ IOReturn HBFX::IOHibernateSystemSleep(void)
 
 IOReturn HBFX::IOHibernateSystemWake(void)
 {
-	callbackHBFX->sleepServiceWake = false;
-	callbackHBFX->wakeCalendarSet  = false;
+	callbackHBFX->sleepServiceWake    = false;
+	callbackHBFX->wakeCalendarSet     = false;
+	callbackHBFX->latestHibernateMode = 0;
+	callbackHBFX->latestStandbyDelay  = 0;
+	callbackHBFX->latestPoweroffDelay = 0;
+	callbackHBFX->sleepPhase          = -1;
+	callbackHBFX->sleepFactors        = 0;
+	callbackHBFX->sleepReason         = 0;
+	callbackHBFX->sleepType           = 0;
+	callbackHBFX->sleepFlags          = 0;
 	
 	IOReturn result = FunctionCast(IOHibernateSystemWake, callbackHBFX->orgIOHibernateSystemWake)();
 	DBGLOG("HBFX", "IOHibernateSystemWake is called, result is: %x", result);
@@ -155,8 +164,11 @@ IOReturn HBFX::IOHibernateSystemWake(void)
 			callbackHBFX->sleepServiceWake = true;
 			DBGLOG("HBFX", "IOHibernateSystemWake: Maintenance/SleepService wake");
 			
-			if (callbackHBFX->privateSleepSystem)
-				callbackHBFX->privateSleepSystem(IOService::getPMRootDomain(), kIOPMSleepReasonSleepServiceExit);
+			if (callbackHBFX->nextSleepTimer)
+			{
+				callbackHBFX->nextSleepTimer->cancelTimeout();
+				callbackHBFX->nextSleepTimer->setTimeoutMS(45000);
+			}
 		}
 	}
 	
@@ -251,6 +263,9 @@ IOReturn HBFX::AppleRTC_setupDateTimeAlarm(void *that, void* rctDateTime)
 IOReturn HBFX::X86PlatformPlugin_sleepPolicyHandler(void * target, IOPMSystemSleepPolicyVariables * vars, IOPMSystemSleepParameters * params)
 {
 	bool forceHibernate = false;
+	
+	if (callbackHBFX->nextSleepTimer)
+		callbackHBFX->nextSleepTimer->cancelTimeout();
 
 	IOReturn result = FunctionCast(X86PlatformPlugin_sleepPolicyHandler, callbackHBFX->orgSleepPolicyHandler)(target, vars, params);
 	if (result != KERN_SUCCESS)
@@ -335,7 +350,7 @@ IOReturn HBFX::X86PlatformPlugin_sleepPolicyHandler(void * target, IOPMSystemSle
 			else if (autoPowerOffEnabled)
 				delta_time = callbackHBFX->latestPoweroffDelay;
 			bool pmset_non_default_mode = (callbackHBFX->latestHibernateMode != (kIOHibernateModeOn | kIOHibernateModeSleep));
-			if (!pmset_non_default_mode && !forceHibernate && !callbackHBFX->wakeCalendarSet && delta_time != 0)
+			if (!pmset_non_default_mode && !forceHibernate && !callbackHBFX->wakeCalendarSet && !callbackHBFX->sleepServiceWake && delta_time != 0)
 			{
 				struct tm tm;
 				struct timeval tv;
@@ -489,7 +504,7 @@ void HBFX::processKernel(KernelPatcher &patcher)
 		if (!auto_hibernate_mode_on)
 			return;
 	}
-	
+
 	if (!(progressState & ProcessingState::KernelRouted))
 	{
 		if (auto_hibernate_mode_on) {
@@ -497,22 +512,40 @@ void HBFX::processKernel(KernelPatcher &patcher)
 				{"__ZN14IOPMrootDomain26setMaintenanceWakeCalendarEPK18IOPMCalendarStruct", IOPMrootDomain_setMaintenanceWakeCalendar, orgSetMaintenanceWakeCalendar},
 				{"_IOHibernateSystemWake", IOHibernateSystemWake, orgIOHibernateSystemWake}
 			};
-			if (!patcher.routeMultiple(KernelPatcher::KernelID, requests, arrsize(requests)))
+			if (!patcher.routeMultiple(KernelPatcher::KernelID, requests, arrsize(requests))) {
 				SYSLOG("HBFX", "patcher.routeMultiple for %s is failed with error %d", requests[0].symbol, patcher.getError());
-			patcher.clearError();
-			
-			privateSleepSystem = reinterpret_cast<t_privateSleepSystem>(patcher.solveSymbol(KernelPatcher::KernelID, "__ZN14IOPMrootDomain18privateSleepSystemEj"));
-			if (!privateSleepSystem) {
-				SYSLOG("HBFX", "failed to resolve __ZN14IOPMrootDomain18privateSleepSystemEj %d", patcher.getError());
 				patcher.clearError();
 			}
+			else if (!nextSleepTimer) {
+				if (!workLoop)
+					workLoop = IOWorkLoop::workLoop();
+					
+				if (workLoop) {
+					nextSleepTimer = IOTimerEventSource::timerEventSource(workLoop,
+					[](OSObject *owner, IOTimerEventSource *) {
+						DBGLOG("HBFX", "Force system to sleep by calling sleepSystem");
+						IOService::getPMRootDomain()->receivePowerNotification(kIOPMSleepNow);
+					});
+					
+					if (nextSleepTimer) {
+						IOReturn result = workLoop->addEventSource(nextSleepTimer);
+						if (result != kIOReturnSuccess)
+							SYSLOG("HBFX", "addEventSource failed");
+					}
+					else
+						SYSLOG("HBFX", "timerEventSource failed");
+				}
+				else
+					SYSLOG("HBFX", "IOService instance does not have workLoop");
+			}
 		}
-		
+
 		if (nvram_patches_required && initialize_nvstorage()) {
 			KernelPatcher::RouteRequest request	{"_IOHibernateSystemSleep", IOHibernateSystemSleep, orgIOHibernateSystemSleep};
-			if (!patcher.routeMultiple(KernelPatcher::KernelID, &request, 1))
+			if (!patcher.routeMultiple(KernelPatcher::KernelID, &request, 1)) {
 				SYSLOG("HBFX", "patcher.routeMultiple for %s is failed with error %d", request.symbol, patcher.getError());
-			patcher.clearError();
+				patcher.clearError();
+			}
 
 			ml_at_interrupt_context = reinterpret_cast<t_ml_at_interrupt_context>(patcher.solveSymbol(KernelPatcher::KernelID, "_ml_at_interrupt_context"));
 			if (!ml_at_interrupt_context)
