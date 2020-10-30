@@ -2,6 +2,7 @@ HibernationFixup Changelog
 ============================
 #### v1.3.7
 - Refactoring, setup next RTC wake manually if IOPMrootDomain::setMaintenanceWakeCalendar was not called before sleep
+- Force next sleep if maintanence wake type is detected (RTC/SleepService/Maintenance)
 
 #### v1.3.6
 - Added MacKernelSDK with Xcode 12 compatibility
