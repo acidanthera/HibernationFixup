@@ -225,8 +225,13 @@ IOReturn HBFX::IOPMrootDomain_setMaintenanceWakeCalendar(IOPMrootDomain* that, I
 
 IOReturn HBFX::AppleRTC_setupDateTimeAlarm(void *that, void* rctDateTime)
 {
-	DBGLOG("HBFX", "AppleRTC_setupDateTimeAlarm is called, set alarm to seconds: %lld", callbackHBFX->convertDateTimeToSeconds(rctDateTime));
+	DBGLOG("HBFX", "AppleRTC::setupDateTimeAlarm is called, set alarm to seconds: %lld", callbackHBFX->convertDateTimeToSeconds(rctDateTime));
 
+	if (callbackHBFX->sleepServiceWake) {
+		DBGLOG("HBFX", "AppleRTC::setupDateTimeAlarm called after sleepServiceWake is set");
+		return KERN_SUCCESS;
+	}
+	
 	IOPMrootDomain * pmRootDomain = reinterpret_cast<IOService*>(that)->getPMRootDomain();
 	if (pmRootDomain) {
 		uint32_t delta_time = 0;
