@@ -1,5 +1,8 @@
 HibernationFixup Changelog
 ============================
+#### v1.3.8
+- Improve auto hibernation: immediate hibernate if standbydelaylow / autopoweroffdelay is 0, fast resume after hibernate, code cleanup
+
 #### v1.3.7
 - Refactoring, setup next RTC wake manually if IOPMrootDomain::setMaintenanceWakeCalendar was not called before sleep
 - Force next sleep if maintanence wake type is detected (RTC/SleepService/Maintenance)

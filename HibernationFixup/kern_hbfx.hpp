@@ -66,8 +66,8 @@ private:
 	static IOReturn     X86PlatformPlugin_sleepPolicyHandler(void * target, IOPMSystemSleepPolicyVariables * vars, IOPMSystemSleepParameters * params);
 
 	static int          packA(char *inbuf, uint32_t length, uint32_t buflen);
-	static IOReturn     restoreMachineState(IOService *that, IOOptionBits options, IOService * device);
-	static void         extendedConfigWrite16(IOService *that, UInt64 offset, UInt16 data);
+	static IOReturn     IOPCIBridge_restoreMachineState(IOService *that, IOOptionBits options, IOService * device);
+	static void         IOPCIDevice_extendedConfigWrite16(IOService *that, UInt64 offset, UInt16 data);
 
 
 	/**

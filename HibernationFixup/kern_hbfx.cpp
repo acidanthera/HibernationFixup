@@ -71,7 +71,7 @@ void HBFX::deinit()
 IOReturn HBFX::IOHibernateSystemSleep(void)
 {
 	IOReturn result = FunctionCast(IOHibernateSystemSleep, callbackHBFX->orgIOHibernateSystemSleep)();
-	DBGLOG("HBFX", "IOHibernateSystemSleep is called, result is: %x", result);
+	DBGLOG("HBFX", "IOHibernateSystemSleep is called, result is: 0x%x", result);
 
 	uint32_t ioHibernateState = kIOHibernateStateInactive;
 	if (WIOKit::getOSDataValue(IOService::getPMRootDomain(), kIOHibernateStateKey, ioHibernateState))
@@ -144,7 +144,7 @@ IOReturn HBFX::IOHibernateSystemWake(void)
 	callbackHBFX->sleepFlags          = 0;
 	
 	IOReturn result = FunctionCast(IOHibernateSystemWake, callbackHBFX->orgIOHibernateSystemWake)();
-	DBGLOG("HBFX", "IOHibernateSystemWake is called, result is: %x", result);
+	DBGLOG("HBFX", "IOHibernateSystemWake is called, result is: 0x%x", result);
 	
 	OSString * wakeType = OSDynamicCast(OSString, IOService::getPMRootDomain()->getProperty(kIOPMRootDomainWakeTypeKey));
 	OSString * wakeReason = OSDynamicCast(OSString, IOService::getPMRootDomain()->getProperty(kIOPMRootDomainWakeReasonKey));
@@ -155,6 +155,9 @@ IOReturn HBFX::IOHibernateSystemWake(void)
 		DBGLOG("HBFX", "IOHibernateSystemWake: wake reason is: %s", wakeReason ? wakeReason->getCStringNoCopy() : "null");
 	}
 
+	if (callbackHBFX->nextSleepTimer)
+		callbackHBFX->nextSleepTimer->cancelTimeout();
+
 	if (result == KERN_SUCCESS && wakeType && wakeReason)
 	{
 		if (strstr(wakeReason->getCStringNoCopy(), "RTC", strlen("RTC")) &&
@@ -163,12 +166,12 @@ IOReturn HBFX::IOHibernateSystemWake(void)
 		{
 			callbackHBFX->sleepServiceWake = true;
 			DBGLOG("HBFX", "IOHibernateSystemWake: Maintenance/SleepService wake");
-			
-			if (callbackHBFX->nextSleepTimer)
-			{
-				callbackHBFX->nextSleepTimer->cancelTimeout();
-				callbackHBFX->nextSleepTimer->setTimeoutMS(45000);
-			}
+
+			bool deepSleepEnabled = OSDynamicCast(OSBoolean, IOService::getPMRootDomain()->getProperty(kIOPMDeepSleepEnabledKey)) == kOSBooleanTrue;
+			bool autoPowerOffEnabled = OSDynamicCast(OSBoolean, IOService::getPMRootDomain()->getProperty(kIOPMAutoPowerOffEnabledKey)) == kOSBooleanTrue;
+			bool standbyEnabled = deepSleepEnabled || autoPowerOffEnabled;
+			if (standbyEnabled && callbackHBFX->nextSleepTimer)
+				callbackHBFX->nextSleepTimer->setTimeoutMS(1000);
 		}
 	}
 	
@@ -196,8 +199,8 @@ IOReturn HBFX::IOPMrootDomain_setMaintenanceWakeCalendar(IOPMrootDomain* that, I
 		delta_time = callbackHBFX->latestPoweroffDelay;
 
 	callbackHBFX->wakeCalendarSet = false;
-	bool pmset_non_default_mode = (callbackHBFX->latestHibernateMode != (kIOHibernateModeOn | kIOHibernateModeSleep));
-	if (!pmset_non_default_mode && delta_time != 0)
+	bool pmset_default_mode = (callbackHBFX->latestHibernateMode == (kIOHibernateModeOn | kIOHibernateModeSleep));
+	if (pmset_default_mode && delta_time != 0)
 	{
 		struct tm tm;
 		struct timeval tv;
@@ -240,8 +243,8 @@ IOReturn HBFX::AppleRTC_setupDateTimeAlarm(void *that, void* rctDateTime)
 		else if (OSDynamicCast(OSBoolean, pmRootDomain->getProperty(kIOPMAutoPowerOffEnabledKey)) == kOSBooleanTrue)
 			delta_time = callbackHBFX->latestPoweroffDelay;
 
-		bool pmset_non_default_mode = (callbackHBFX->latestHibernateMode != (kIOHibernateModeOn | kIOHibernateModeSleep));
-		if (!pmset_non_default_mode && delta_time != 0)
+		bool pmset_default_mode = (callbackHBFX->latestHibernateMode == (kIOHibernateModeOn | kIOHibernateModeSleep));
+		if (pmset_default_mode && delta_time != 0)
 		{
 			struct tm tm;
 			struct timeval tv;
@@ -269,9 +272,6 @@ IOReturn HBFX::X86PlatformPlugin_sleepPolicyHandler(void * target, IOPMSystemSle
 {
 	bool forceHibernate = false;
 	
-	if (callbackHBFX->nextSleepTimer)
-		callbackHBFX->nextSleepTimer->cancelTimeout();
-
 	IOReturn result = FunctionCast(X86PlatformPlugin_sleepPolicyHandler, callbackHBFX->orgSleepPolicyHandler)(target, vars, params);
 	if (result != KERN_SUCCESS)
 		SYSLOG("HBFX", "orgSleepPolicyHandler returned error 0x%x", result);
@@ -292,13 +292,15 @@ IOReturn HBFX::X86PlatformPlugin_sleepPolicyHandler(void * target, IOPMSystemSle
 			callbackHBFX->sleepType    = params->sleepType;
 			callbackHBFX->sleepFlags   = params->sleepFlags;
 		}
+		
+		if (callbackHBFX->nextSleepTimer)
+			callbackHBFX->nextSleepTimer->cancelTimeout();
 
 		bool deepSleepEnabled = OSDynamicCast(OSBoolean, IOService::getPMRootDomain()->getProperty(kIOPMDeepSleepEnabledKey)) == kOSBooleanTrue;
 		bool autoPowerOffEnabled = OSDynamicCast(OSBoolean, IOService::getPMRootDomain()->getProperty(kIOPMAutoPowerOffEnabledKey)) == kOSBooleanTrue;
 		bool standbyEnabled = deepSleepEnabled || autoPowerOffEnabled;
 		auto autoHibernateMode = ADDPR(hbfx_config).autoHibernateMode;
-		while (standbyEnabled && (autoHibernateMode & Configuration::EnableAutoHibernation) &&
-			   (params->sleepType == kIOPMSleepTypeDeepIdle || params->sleepType == kIOPMSleepTypeStandby))
+		while (standbyEnabled && (params->sleepType == kIOPMSleepTypeDeepIdle || params->sleepType == kIOPMSleepTypeStandby))
 		{
 			IOPMPowerSource *power_source = callbackHBFX->getPowerSource();
 			if (power_source && power_source->batteryInstalled()) {
@@ -354,8 +356,8 @@ IOReturn HBFX::X86PlatformPlugin_sleepPolicyHandler(void * target, IOPMSystemSle
 				delta_time = callbackHBFX->latestStandbyDelay;
 			else if (autoPowerOffEnabled)
 				delta_time = callbackHBFX->latestPoweroffDelay;
-			bool pmset_non_default_mode = (callbackHBFX->latestHibernateMode != (kIOHibernateModeOn | kIOHibernateModeSleep));
-			if (!pmset_non_default_mode && !forceHibernate && !callbackHBFX->wakeCalendarSet && !callbackHBFX->sleepServiceWake && delta_time != 0)
+			bool pmset_default_mode = (callbackHBFX->latestHibernateMode == (kIOHibernateModeOn | kIOHibernateModeSleep));
+			if (pmset_default_mode && !forceHibernate && !callbackHBFX->wakeCalendarSet && !callbackHBFX->sleepServiceWake && delta_time != 0)
 			{
 				struct tm tm;
 				struct timeval tv;
@@ -366,7 +368,7 @@ IOReturn HBFX::X86PlatformPlugin_sleepPolicyHandler(void * target, IOPMSystemSle
 				IOPMrootDomain_setMaintenanceWakeCalendar(IOService::getPMRootDomain(), &calendar);
 			}
 
-			bool setupHibernate = (forceHibernate || !callbackHBFX->wakeCalendarSet || callbackHBFX->sleepServiceWake);
+			bool setupHibernate = (forceHibernate || !callbackHBFX->wakeCalendarSet || callbackHBFX->sleepServiceWake || (pmset_default_mode && delta_time == 0));
 			if (callbackHBFX->sleepPhase < kIOPMSleepPhase2 && setupHibernate)
 			{
 				vars->sleepFactors = callbackHBFX->sleepFactors;
@@ -462,12 +464,12 @@ int HBFX::packA(char *inbuf, uint32_t length, uint32_t buflen)
 
 //==============================================================================
 
-IOReturn HBFX::restoreMachineState(IOService *that, IOOptionBits options, IOService * device)
+IOReturn HBFX::IOPCIBridge_restoreMachineState(IOService *that, IOOptionBits options, IOService * device)
 {
 	if (kMachineRestoreDehibernate & options)
 		callbackHBFX->correct_pci_config_command = true;
 
-	IOReturn result = FunctionCast(restoreMachineState, callbackHBFX->orgRestoreMachineState)(that, options, device);
+	IOReturn result = FunctionCast(IOPCIBridge_restoreMachineState, callbackHBFX->orgRestoreMachineState)(that, options, device);
 	DBGLOG("HBFX", "restoreMachineState returned 0x%x for device %s, options = 0x%x", result, that->getName(), options);
 
 	if (kMachineRestoreDehibernate & options)
@@ -478,7 +480,7 @@ IOReturn HBFX::restoreMachineState(IOService *that, IOOptionBits options, IOServ
 
 //==============================================================================
 
-void HBFX::extendedConfigWrite16(IOService *that, UInt64 offset, UInt16 data)
+void HBFX::IOPCIDevice_extendedConfigWrite16(IOService *that, UInt64 offset, UInt16 data)
 {
 	if (callbackHBFX->correct_pci_config_command && offset == WIOKit::PCIRegister::kIOPCIConfigCommand)
 	{
@@ -492,26 +494,26 @@ void HBFX::extendedConfigWrite16(IOService *that, UInt64 offset, UInt16 data)
 		}
 	}
 
-	FunctionCast(extendedConfigWrite16, callbackHBFX->orgExtendedConfigWrite16)(that, offset, data);
+	FunctionCast(IOPCIDevice_extendedConfigWrite16, callbackHBFX->orgExtendedConfigWrite16)(that, offset, data);
 }
 
 //==============================================================================
 
 void HBFX::processKernel(KernelPatcher &patcher)
 {
-	bool auto_hibernate_mode_on = (ADDPR(hbfx_config).autoHibernateMode & Configuration::EnableAutoHibernation);
-	if (!ADDPR(hbfx_config).dumpNvram && emuVariableIsDetected())
-		ADDPR(hbfx_config).dumpNvram = true;
-	bool nvram_patches_required = (ADDPR(hbfx_config).dumpNvram == true || !checkRTCExtendedMemory());
-	if (!nvram_patches_required)
-	{
-		DBGLOG("HBFX", "all nvram kernel patches will be skipped since the second bank of RTC memory is available");
-		if (!auto_hibernate_mode_on)
-			return;
-	}
-
 	if (!(progressState & ProcessingState::KernelRouted))
 	{
+		bool auto_hibernate_mode_on = (ADDPR(hbfx_config).autoHibernateMode & Configuration::EnableAutoHibernation);
+		if (!ADDPR(hbfx_config).dumpNvram && emuVariableIsDetected())
+			ADDPR(hbfx_config).dumpNvram = true;
+		bool nvram_patches_required = (ADDPR(hbfx_config).dumpNvram == true || !checkRTCExtendedMemory());
+		if (!nvram_patches_required)
+		{
+			DBGLOG("HBFX", "all nvram kernel patches will be skipped since the second bank of RTC memory is available");
+			if (!auto_hibernate_mode_on)
+				return;
+		}
+
 		if (auto_hibernate_mode_on) {
 			KernelPatcher::RouteRequest requests[] = {
 				{"__ZN14IOPMrootDomain26setMaintenanceWakeCalendarEPK18IOPMCalendarStruct", IOPMrootDomain_setMaintenanceWakeCalendar, orgSetMaintenanceWakeCalendar},
@@ -527,9 +529,13 @@ void HBFX::processKernel(KernelPatcher &patcher)
 					
 				if (workLoop) {
 					nextSleepTimer = IOTimerEventSource::timerEventSource(workLoop,
-					[](OSObject *owner, IOTimerEventSource *) {
-						DBGLOG("HBFX", "Force system to sleep by calling sleepSystem");
-						IOService::getPMRootDomain()->receivePowerNotification(kIOPMSleepNow);
+					[](OSObject *owner, IOTimerEventSource *sender) {
+						DBGLOG("HBFX", "Force system to sleep by calling IOPMrootDomain::receivePowerNotification");
+						IOReturn result = IOService::getPMRootDomain()->receivePowerNotification(kIOPMSleepNow);
+						if (result != KERN_SUCCESS)
+							SYSLOG("HBFX", "IOPMrootDomain::receivePowerNotification failed with error 0x%x", result);
+						if (sender)
+							sender->setTimeoutMS(20000);
 					});
 					
 					if (nextSleepTimer) {
@@ -621,14 +627,14 @@ void HBFX::processKernel(KernelPatcher &patcher)
 
 void HBFX::processKext(KernelPatcher &patcher, size_t index, mach_vm_address_t address, size_t size)
 {
-	if (!ADDPR(hbfx_config).dumpNvram && emuVariableIsDetected())
-		ADDPR(hbfx_config).dumpNvram = true;
-	bool nvram_patches_required = (ADDPR(hbfx_config).dumpNvram == true || !checkRTCExtendedMemory());
-	if (nvram_patches_required)
-		initialize_nvstorage();
-	
 	if (progressState != ProcessingState::EverythingDone)
 	{
+		if (!ADDPR(hbfx_config).dumpNvram && emuVariableIsDetected())
+			ADDPR(hbfx_config).dumpNvram = true;
+		bool nvram_patches_required = (ADDPR(hbfx_config).dumpNvram == true || !checkRTCExtendedMemory());
+		if (nvram_patches_required)
+			initialize_nvstorage();
+
 		bool auto_hibernate_mode_on = (ADDPR(hbfx_config).autoHibernateMode & Configuration::EnableAutoHibernation);
 		
 		for (size_t i = 0; i < arrsize(kextList); i++)
@@ -638,8 +644,8 @@ void HBFX::processKext(KernelPatcher &patcher, size_t index, mach_vm_address_t a
 				if (ADDPR(hbfx_config).patchPCIFamily && i == 0 && !(progressState & ProcessingState::IOPCIFamilyRouted))
 				{
 					KernelPatcher::RouteRequest requests[] {
-						{"__ZN11IOPCIBridge19restoreMachineStateEjP11IOPCIDevice", restoreMachineState, orgRestoreMachineState},
-						{"__ZN11IOPCIDevice21extendedConfigWrite16Eyt", extendedConfigWrite16, orgExtendedConfigWrite16},
+						{"__ZN11IOPCIBridge19restoreMachineStateEjP11IOPCIDevice", IOPCIBridge_restoreMachineState, orgRestoreMachineState},
+						{"__ZN11IOPCIDevice21extendedConfigWrite16Eyt", IOPCIDevice_extendedConfigWrite16, orgExtendedConfigWrite16},
 					};
 
 					if (!patcher.routeMultiple(index, requests, address, size))
