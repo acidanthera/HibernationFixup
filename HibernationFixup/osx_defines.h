@@ -28,6 +28,11 @@
 #define kIOPMRootDomainWakeTypeMaintenance      "Maintenance"
 #define kIOPMAutoPowerOffEnabledKey         "AutoPowerOff Enabled"
 
+/* kIOPMUserIsActiveKey
+ * Key refers to a boolean value that indicates if the user is active.
+ */
+#define kIOPMUserIsActiveKey                "IOPMUserIsActive"
+
 struct IOPMSystemSleepPolicyVariables
 {
 	uint32_t    signature;                  // kIOPMSystemSleepPolicySignature

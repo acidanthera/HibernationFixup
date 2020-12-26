@@ -60,7 +60,8 @@ private:
 	 */
 	static IOReturn     IOHibernateSystemSleep(void);
 	static IOReturn     IOHibernateSystemWake(void);
-	
+
+	static void         IOPMrootDomain_willEnterFullWake(IOPMrootDomain* that);
 	static IOReturn     IOPMrootDomain_setMaintenanceWakeCalendar(IOPMrootDomain* that, IOPMCalendarStruct * calendar);
 	static IOReturn     AppleRTC_setupDateTimeAlarm(void *that, void* rctDateTime);
 	static IOReturn     X86PlatformPlugin_sleepPolicyHandler(void * target, IOPMSystemSleepPolicyVariables * vars, IOPMSystemSleepParameters * params);
@@ -76,12 +77,13 @@ private:
 	mach_vm_address_t orgIOHibernateSystemSleep {};
 	mach_vm_address_t orgIOHibernateSystemWake {};
 
-	mach_vm_address_t orgSetMaintenanceWakeCalendar {};
-	mach_vm_address_t orgSleepPolicyHandler {};
-	mach_vm_address_t orgSetupDateTimeAlarm {};
+	mach_vm_address_t orgIOPMrootDomain_willEnterFullWake {};
+	mach_vm_address_t orgIOPMrootDomain_setMaintenanceWakeCalendar {};
+	mach_vm_address_t orgX86PlatformPlugin_sleepPolicyHandler {};
+	mach_vm_address_t orgAppleRTC_setupDateTimeAlarm {};
 	mach_vm_address_t orgPackA {};
-	mach_vm_address_t orgRestoreMachineState {};
-	mach_vm_address_t orgExtendedConfigWrite16 {};
+	mach_vm_address_t orgIOPCIBridge_restoreMachineState {};
+	mach_vm_address_t orgIOPCIDevice_extendedConfigWrite16 {};
 
 	/**
 	 *  Sync file buffers & interrupts & preemption control

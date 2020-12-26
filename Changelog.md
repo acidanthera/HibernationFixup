@@ -1,5 +1,9 @@
 HibernationFixup Changelog
 ============================
+#### v1.3.9
+- Auto hibernation: properly handle transition from dark wake to full wake
+- Extend method emuVariableIsDetected in order to use EfiRuntimeServices if nvram cannot be accessed in standard way
+
 #### v1.3.8
 - Improve auto hibernation: immediate hibernate if standbydelaylow / autopoweroffdelay is 0, fast resume after hibernate, code cleanup
 

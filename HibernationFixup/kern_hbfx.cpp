@@ -10,6 +10,7 @@
 #include <IOKit/IOTimerEventSource.h>
 
 #include <Headers/kern_api.hpp>
+#include <Headers/kern_efi.hpp>
 #include <Headers/kern_file.hpp>
 #include <Headers/kern_compat.hpp>
 #include <Headers/kern_compression.hpp>
@@ -171,11 +172,33 @@ IOReturn HBFX::IOHibernateSystemWake(void)
 			bool autoPowerOffEnabled = OSDynamicCast(OSBoolean, IOService::getPMRootDomain()->getProperty(kIOPMAutoPowerOffEnabledKey)) == kOSBooleanTrue;
 			bool standbyEnabled = deepSleepEnabled || autoPowerOffEnabled;
 			if (standbyEnabled && callbackHBFX->nextSleepTimer)
-				callbackHBFX->nextSleepTimer->setTimeoutMS(1000);
+				callbackHBFX->nextSleepTimer->setTimeoutMS(20000);
 		}
 	}
 	
 	return result;
+}
+
+//==============================================================================
+
+void HBFX::IOPMrootDomain_willEnterFullWake(IOPMrootDomain* that)
+{
+	DBGLOG("HBFX", "willEnterFullWake called");
+	FunctionCast(IOPMrootDomain_willEnterFullWake, callbackHBFX->orgIOPMrootDomain_willEnterFullWake)(that);
+
+	callbackHBFX->sleepServiceWake    = false;
+	callbackHBFX->wakeCalendarSet     = false;
+	callbackHBFX->latestHibernateMode = 0;
+	callbackHBFX->latestStandbyDelay  = 0;
+	callbackHBFX->latestPoweroffDelay = 0;
+	callbackHBFX->sleepPhase          = -1;
+	callbackHBFX->sleepFactors        = 0;
+	callbackHBFX->sleepReason         = 0;
+	callbackHBFX->sleepType           = 0;
+	callbackHBFX->sleepFlags          = 0;
+
+	if (callbackHBFX->nextSleepTimer)
+		callbackHBFX->nextSleepTimer->cancelTimeout();
 }
 
 //==============================================================================
@@ -215,11 +238,11 @@ IOReturn HBFX::IOPMrootDomain_setMaintenanceWakeCalendar(IOPMrootDomain* that, I
 
 		*calendar = { static_cast<UInt32>(tm.tm_year), static_cast<UInt8>(tm.tm_mon), static_cast<UInt8>(tm.tm_mday),
 			static_cast<UInt8>(tm.tm_hour), static_cast<UInt8>(tm.tm_min), static_cast<UInt8>(tm.tm_sec), calendar->selector };
-		result = FunctionCast(IOPMrootDomain_setMaintenanceWakeCalendar, callbackHBFX->orgSetMaintenanceWakeCalendar)(that, calendar);
+		result = FunctionCast(IOPMrootDomain_setMaintenanceWakeCalendar, callbackHBFX->orgIOPMrootDomain_setMaintenanceWakeCalendar)(that, calendar);
 		callbackHBFX->wakeCalendarSet = (result == KERN_SUCCESS);
 	}
 	else
-		result = FunctionCast(IOPMrootDomain_setMaintenanceWakeCalendar, callbackHBFX->orgSetMaintenanceWakeCalendar)(that, calendar);
+		result = FunctionCast(IOPMrootDomain_setMaintenanceWakeCalendar, callbackHBFX->orgIOPMrootDomain_setMaintenanceWakeCalendar)(that, calendar);
 
 	return result;
 }
@@ -263,7 +286,7 @@ IOReturn HBFX::AppleRTC_setupDateTimeAlarm(void *that, void* rctDateTime)
 	else
 		SYSLOG("HBFX", "IOPMrootDomain cannot be obtained from AppleRTC");
 
-	return FunctionCast(AppleRTC_setupDateTimeAlarm, callbackHBFX->orgSetupDateTimeAlarm)(that, rctDateTime);
+	return FunctionCast(AppleRTC_setupDateTimeAlarm, callbackHBFX->orgAppleRTC_setupDateTimeAlarm)(that, rctDateTime);
 }
 
 //==============================================================================
@@ -272,7 +295,7 @@ IOReturn HBFX::X86PlatformPlugin_sleepPolicyHandler(void * target, IOPMSystemSle
 {
 	bool forceHibernate = false;
 	
-	IOReturn result = FunctionCast(X86PlatformPlugin_sleepPolicyHandler, callbackHBFX->orgSleepPolicyHandler)(target, vars, params);
+	IOReturn result = FunctionCast(X86PlatformPlugin_sleepPolicyHandler, callbackHBFX->orgX86PlatformPlugin_sleepPolicyHandler)(target, vars, params);
 	if (result != KERN_SUCCESS)
 		SYSLOG("HBFX", "orgSleepPolicyHandler returned error 0x%x", result);
 	else {
@@ -469,7 +492,7 @@ IOReturn HBFX::IOPCIBridge_restoreMachineState(IOService *that, IOOptionBits opt
 	if (kMachineRestoreDehibernate & options)
 		callbackHBFX->correct_pci_config_command = true;
 
-	IOReturn result = FunctionCast(IOPCIBridge_restoreMachineState, callbackHBFX->orgRestoreMachineState)(that, options, device);
+	IOReturn result = FunctionCast(IOPCIBridge_restoreMachineState, callbackHBFX->orgIOPCIBridge_restoreMachineState)(that, options, device);
 	DBGLOG("HBFX", "restoreMachineState returned 0x%x for device %s, options = 0x%x", result, that->getName(), options);
 
 	if (kMachineRestoreDehibernate & options)
@@ -494,7 +517,7 @@ void HBFX::IOPCIDevice_extendedConfigWrite16(IOService *that, UInt64 offset, UIn
 		}
 	}
 
-	FunctionCast(IOPCIDevice_extendedConfigWrite16, callbackHBFX->orgExtendedConfigWrite16)(that, offset, data);
+	FunctionCast(IOPCIDevice_extendedConfigWrite16, callbackHBFX->orgIOPCIDevice_extendedConfigWrite16)(that, offset, data);
 }
 
 //==============================================================================
@@ -516,7 +539,8 @@ void HBFX::processKernel(KernelPatcher &patcher)
 
 		if (auto_hibernate_mode_on) {
 			KernelPatcher::RouteRequest requests[] = {
-				{"__ZN14IOPMrootDomain26setMaintenanceWakeCalendarEPK18IOPMCalendarStruct", IOPMrootDomain_setMaintenanceWakeCalendar, orgSetMaintenanceWakeCalendar},
+				{"__ZN14IOPMrootDomain17willEnterFullWakeEv", IOPMrootDomain_willEnterFullWake, orgIOPMrootDomain_willEnterFullWake},
+				{"__ZN14IOPMrootDomain26setMaintenanceWakeCalendarEPK18IOPMCalendarStruct", IOPMrootDomain_setMaintenanceWakeCalendar, orgIOPMrootDomain_setMaintenanceWakeCalendar},
 				{"_IOHibernateSystemWake", IOHibernateSystemWake, orgIOHibernateSystemWake}
 			};
 			if (!patcher.routeMultiple(KernelPatcher::KernelID, requests, arrsize(requests))) {
@@ -530,6 +554,13 @@ void HBFX::processKernel(KernelPatcher &patcher)
 				if (workLoop) {
 					nextSleepTimer = IOTimerEventSource::timerEventSource(workLoop,
 					[](OSObject *owner, IOTimerEventSource *sender) {
+//						bool isUserActive = OSDynamicCast(OSBoolean, IOService::getPMRootDomain()->getProperty(kIOPMUserIsActiveKey)) == kOSBooleanTrue;
+//						if (isUserActive)
+//						{
+//							DBGLOG("HBFX", "User is active, do not torce system to sleep");
+//							return;
+//						}
+
 						DBGLOG("HBFX", "Force system to sleep by calling IOPMrootDomain::receivePowerNotification");
 						IOReturn result = IOService::getPMRootDomain()->receivePowerNotification(kIOPMSleepNow);
 						if (result != KERN_SUCCESS)
@@ -644,8 +675,8 @@ void HBFX::processKext(KernelPatcher &patcher, size_t index, mach_vm_address_t a
 				if (ADDPR(hbfx_config).patchPCIFamily && i == 0 && !(progressState & ProcessingState::IOPCIFamilyRouted))
 				{
 					KernelPatcher::RouteRequest requests[] {
-						{"__ZN11IOPCIBridge19restoreMachineStateEjP11IOPCIDevice", IOPCIBridge_restoreMachineState, orgRestoreMachineState},
-						{"__ZN11IOPCIDevice21extendedConfigWrite16Eyt", IOPCIDevice_extendedConfigWrite16, orgExtendedConfigWrite16},
+						{"__ZN11IOPCIBridge19restoreMachineStateEjP11IOPCIDevice", IOPCIBridge_restoreMachineState, orgIOPCIBridge_restoreMachineState},
+						{"__ZN11IOPCIDevice21extendedConfigWrite16Eyt", IOPCIDevice_extendedConfigWrite16, orgIOPCIDevice_extendedConfigWrite16},
 					};
 
 					if (!patcher.routeMultiple(index, requests, address, size))
@@ -670,7 +701,7 @@ void HBFX::processKext(KernelPatcher &patcher, size_t index, mach_vm_address_t a
 					
 					if (convertDateTimeToSeconds && convertSecondsToDateTime) {
 						KernelPatcher::RouteRequest request
-							{"__ZN8AppleRTC18setupDateTimeAlarmEPK11RTCDateTime", AppleRTC_setupDateTimeAlarm, orgSetupDateTimeAlarm};
+							{"__ZN8AppleRTC18setupDateTimeAlarmEPK11RTCDateTime", AppleRTC_setupDateTimeAlarm, orgAppleRTC_setupDateTimeAlarm};
 						
 						if (!patcher.routeMultiple(index, &request, 1, address, size))
 							SYSLOG("HBFX", "patcher.routeMultiple for %s is failed with error %d", request.symbol, patcher.getError());
@@ -682,7 +713,7 @@ void HBFX::processKext(KernelPatcher &patcher, size_t index, mach_vm_address_t a
 				if (auto_hibernate_mode_on && i == 2 && !(progressState & ProcessingState::X86PluginRouted))
 				{
 					KernelPatcher::RouteRequest request
-						{"__ZN17X86PlatformPlugin18sleepPolicyHandlerEPK30IOPMSystemSleepPolicyVariablesP25IOPMSystemSleepParameters", X86PlatformPlugin_sleepPolicyHandler, orgSleepPolicyHandler};
+						{"__ZN17X86PlatformPlugin18sleepPolicyHandlerEPK30IOPMSystemSleepPolicyVariablesP25IOPMSystemSleepParameters", X86PlatformPlugin_sleepPolicyHandler, orgX86PlatformPlugin_sleepPolicyHandler};
 					
 					if (!patcher.routeMultiple(index, &request, 1, address, size))
 						SYSLOG("HBFX", "patcher.routeMultiple for %s is failed with error %d", request.symbol, patcher.getError());
@@ -837,36 +868,54 @@ bool HBFX::initialize_nvstorage()
 
 bool HBFX::emuVariableIsDetected()
 {
-	static int detected = -1;
-	if (detected != -1)
-		return (detected == 1);
+	bool result = false;
+	IORegistryEntry *reg_entry = nullptr;
 	
-	if (gIODTPlane != nullptr)
+	if (gIODTPlane != nullptr && (reg_entry = IORegistryEntry::fromPath("/options", gIODTPlane)))
 	{
-		auto *reg_entry = IORegistryEntry::fromPath("/options", gIODTPlane);
-		if (reg_entry != nullptr)
+		auto reg_variable  = OSDynamicCast(OSData, reg_entry->getProperty("EmuVariableUefiPresent"));
+		bool emu_detected  = (reg_variable != nullptr && reg_variable->isEqualTo("Yes", 3));
+		reg_entry->release();
+		if (emu_detected)
 		{
-			auto reg_variable  = OSDynamicCast(OSData, reg_entry->getProperty("EmuVariableUefiPresent"));
-			bool emu_detected  = (reg_variable != nullptr && reg_variable->isEqualTo("Yes", 3));
-			reg_entry->release();
-			if (emu_detected)
-			{
-				DBGLOG("HBFX", "EmuVariableUefiPresent is detected");
-				detected = 1;
-			}
-			else
-			{
-				DBGLOG("HBFX", "EmuVariableUefiPresent is not detected");
-				detected = 0;
-			}
+			DBGLOG("HBFX", "EmuVariableUefiPresent is detected");
+			result = true;
 		}
 		else
-			SYSLOG("HBFX", "Registry entry /options cannot be found");
+		{
+			DBGLOG("HBFX", "EmuVariableUefiPresent is not detected");
+		}
 	}
 	else
-		SYSLOG("HBFX", "Plane %s is not found", kIODeviceTreePlane);
+	{
+		auto rt = EfiRuntimeServices::get(true);
+		if (rt) {
+			uint64_t size = 5;
+			auto buf = Buffer::create<uint8_t>(size);
+			if (buf) {
+				uint32_t attr = 0;
+				static constexpr EFI_GUID AppleBootGuid { 0x7C436110, 0xAB2A, 0x4BBB, { 0xA8, 0x80, 0xFE, 0x41, 0x99, 0x5C, 0x9F, 0x82 } };
+				auto status = rt->getVariable(u"EmuVariableUefiPresent", &AppleBootGuid, &attr, &size, buf);
+				if (status == EFI_SUCCESS) {
+					result = (size >= 3 && buf[0] == 'Y' && buf[1] == 'e' && buf[2] == 's');
+				}
+				else
+				{
+					DBGLOG("HBFX", "Failed to read efi rt services for EmuVariableUefiPresent, error code: 0x%x", status);
+				}
+				
+				DBGLOG("HBFX", "EmuVariableUefiPresent is %s", result ? "detected" : "not detected");
+				Buffer::deleter(buf);
+			}
+			else
+				SYSLOG("HBFX", "failed to create temporary buffer");
+			rt->put();
+		}
+		else
+			SYSLOG("HBFX", "failed to load efi rt services for rtc-blacklist");
+	}
 	
-	return (detected == 1);
+	return result;
 }
 
 //==============================================================================
