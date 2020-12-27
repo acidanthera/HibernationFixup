@@ -54,6 +54,11 @@ private:
 
 	// return pointer to IOPMPowerSource
 	IOPMPowerSource *getPowerSource();
+	
+	// return true if standby/auto power off is enabled
+	bool isStandbyEnabled(uint32_t &delta_time, bool &pmset_default_mode);
+	
+	IOReturn explicitlyCallSetMaintenanceWakeCalendar();
 
 	/**
 	 *  Hooked methods / callbacks
@@ -146,6 +151,8 @@ private:
 	NVStorage nvstorage;
 	IOWorkLoop *workLoop {};
 	IOTimerEventSource *nextSleepTimer {};
+	
+	bool emulatedNVRAM {false};
 };
 
 #endif /* kern_hbfx_hpp */
