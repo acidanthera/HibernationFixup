@@ -26,19 +26,19 @@ IOHibernateRTCVariables from the system registry and writes it to NVRAM.
 - `-hbfxbeta` enables loading on unsupported osx
 - `-hbfxoff` disables kext loading
 - `-hbfx-ahbm` controls auto-hibernation feature, below there is a description of supported bits:
-	`EnableAutoHibernation` = 1
+	- `EnableAutoHibernation` = 1
 		If this flag is set, system will hibernate instead of regular sleep (flags below can be used to limit this behavior)
-	`WhenLidIsClosed` = 2
+	- `WhenLidIsClosed` = 2
 		Auto hibernation can happen when lid is closed (if bit is not set - no matter which status lid has)
-	`WhenExternalPowerIsDisconnected` = 4
+	- `WhenExternalPowerIsDisconnected` = 4
 		Auto hibernation can happen when external power is disconnected (if bit is not set - no matter whether it is connected)
-	`WhenBatteryIsNotCharging` = 8
+	- `WhenBatteryIsNotCharging` = 8
 		Auto hibernation can happen when battery is not charging (if bit is not set - no matter whether it is charging)
-	`WhenBatteryIsAtWarnLevel` = 16
+	- `WhenBatteryIsAtWarnLevel` = 16
 		Auto hibernation can happen when battery is at warning level (osx and battery kext are responsible for this level)
-	`WhenBatteryAtCriticalLevel` = 32
+	- `WhenBatteryAtCriticalLevel` = 32
 		Auto hibernation can happen when battery is at critical level (osx and battery kext are responsible for this level)
-	`DisableStimulusDarkWakeActivityTickle` = 128
+	- `DisableStimulusDarkWakeActivityTickle` = 128
 		Disable power event kStimulusDarkWakeActivityTickle in kernel, so this event cannot trigger a switching from dark wake to full wake
 
 	Next 4 bits are used to specify minimal capacity percent remaining value when hibernation will be forced.
