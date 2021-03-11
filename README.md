@@ -25,7 +25,7 @@ IOHibernateRTCVariables from the system registry and writes it to NVRAM.
 - `-hbfxdbg` turns on debugging output
 - `-hbfxbeta` enables loading on unsupported osx
 - `-hbfxoff` disables kext loading
-- `hbfx-ahbm=abhm_value` controls auto-hibernation feature, below there is a description of supported bits:
+- `hbfx-ahbm=abhm_value` controls auto-hibernation feature, where abhm_value is an arithmetic sum of respective values below:
 	- `EnableAutoHibernation` = 1:
 		If this flag is set, system will hibernate instead of regular sleep (flags below can be used to limit this behavior)
 	- `WhenLidIsClosed` = 2:
