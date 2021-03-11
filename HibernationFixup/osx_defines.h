@@ -184,4 +184,20 @@ enum{
 	kIOHibernatePostWriteRestart = 3
 };
 
+// For evaluatePolicy()
+// List of stimuli that affects the root domain policy.
+enum {
+	kStimulusDisplayWranglerSleep,      // 0
+	kStimulusDisplayWranglerWake,       // 1
+	kStimulusAggressivenessChanged,     // 2
+	kStimulusDemandSystemSleep,         // 3
+	kStimulusAllowSystemSleepChanged,   // 4
+	kStimulusDarkWakeActivityTickle,    // 5
+	kStimulusDarkWakeEntry,             // 6
+	kStimulusDarkWakeReentry,           // 7
+	kStimulusDarkWakeEvaluate,          // 8
+	kStimulusNoIdleSleepPreventers,     // 9
+	kStimulusEnterUserActiveState,      // 10
+	kStimulusLeaveUserActiveState       // 11
+};
 #endif /* osx_defines_h */

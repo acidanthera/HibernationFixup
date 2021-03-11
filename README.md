@@ -21,10 +21,32 @@ IOHibernateRTCVariables from the system registry and writes it to NVRAM.
 #### Boot-args
 - `-hbfx-dump-nvram` saves NVRAM to a file nvram.plist before hibernation and after kernel panic (with panic info)
 - `-hbfx-disable-patch-pci` disables patching of IOPCIFamily (this patch helps to avoid hang & black screen after resume (restoreMachineState won't be called for all devices)
-- `hbfx-patch-pci=XHC,IMEI,IGPU` allows to specify explicit device list and restoreMachineState won't  be called only for these devices)
+- `hbfx-patch-pci=XHC,IMEI,IGPU` allows to specify explicit device list (and restoreMachineState won't  be called only for these devices). Also supports values `none`, `false`, `off`.
 - `-hbfxdbg` turns on debugging output
 - `-hbfxbeta` enables loading on unsupported osx
 - `-hbfxoff` disables kext loading
+- `-hbfx-ahbm` controls auto-hibernation feature, below there is a description of supported bits:
+	`EnableAutoHibernation` = 1
+		If this flag is set, system will hibernate instead of regular sleep (flags below can be used to limit this behavior)
+	`WhenLidIsClosed` = 2
+		Auto hibernation can happen when lid is closed (if bit is not set - no matter which status lid has)
+	`WhenExternalPowerIsDisconnected` = 4
+		Auto hibernation can happen when external power is disconnected (if bit is not set - no matter whether it is connected)
+	`WhenBatteryIsNotCharging` = 8
+		Auto hibernation can happen when battery is not charging (if bit is not set - no matter whether it is charging)
+	`WhenBatteryIsAtWarnLevel` = 16
+		Auto hibernation can happen when battery is at warning level (osx and battery kext are responsible for this level)
+	`WhenBatteryAtCriticalLevel` = 32
+		Auto hibernation can happen when battery is at critical level (osx and battery kext are responsible for this level)
+	`DisableStimulusDarkWakeActivityTickle` = 128
+		Disable power event kStimulusDarkWakeActivityTickle in kernel, so this event cannot trigger a switching from dark wake to full wake
+
+	Next 4 bits are used to specify minimal capacity percent remaining value when hibernation will be forced.
+	Can be used together with WhenBatteryIsAtWarnLevel or WhenBatteryAtCriticalLevel, when IOPMPowerSource cannot detect warning or critical battery level
+	- `RemainCapacityBit1` = 256,
+	- `RemainCapacityBit2` = 512,
+	- `RemainCapacityBit3` = 1024,
+	- `RemainCapacityBit4` = 2048
 
 #### Dependencies
 - [Lilu](https://github.com/acidanthera/Lilu)

@@ -1,5 +1,9 @@
 HibernationFixup Changelog
 ============================
+#### v1.4.0
+- Auto hibernation: added possibility to disable power event kStimulusDarkWakeActivityTickle in kernel, so this event cannot be a trigger for switching from dark wake to full wake.
+Can be turned on via bit `DisableStimulusDarkWakeActivityTickle=128` in boot-arg `hbfx-ahbm`.
+
 #### v1.3.9
 - Auto hibernation: properly handle transition from dark wake to full wake
 - Extend method emuVariableIsDetected in order to use EfiRuntimeServices if nvram cannot be accessed in standard way

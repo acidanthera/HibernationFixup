@@ -180,6 +180,18 @@ IOReturn HBFX::IOHibernateSystemWake(void)
 
 //==============================================================================
 
+void HBFX::IOPMrootDomain_evaluatePolicy(IOPMrootDomain* that, int stimulus, uint32_t arg)
+{
+	DBGLOG("HBFX", "evaluatePolicy called, stimulus = 0x%x", stimulus);
+	if (stimulus == kStimulusDarkWakeActivityTickle) {
+		DBGLOG("HBFX", "evaluatePolicy prevented kStimulusDarkWakeActivityTickle");
+		return;
+	}
+	FunctionCast(IOPMrootDomain_evaluatePolicy, callbackHBFX->orgIOPMrootDomain_evaluatePolicy)(that, stimulus, arg);
+}
+
+//==============================================================================
+
 void HBFX::IOPMrootDomain_willEnterFullWake(IOPMrootDomain* that)
 {
 	DBGLOG("HBFX", "willEnterFullWake called");
@@ -311,7 +323,8 @@ IOReturn HBFX::X86PlatformPlugin_sleepPolicyHandler(void * target, IOPMSystemSle
 		uint32_t delta_time = 0;
 		bool pmset_default_mode = false;
 		auto autoHibernateMode = ADDPR(hbfx_config).autoHibernateMode;
-		while (callbackHBFX->isStandbyEnabled(delta_time, pmset_default_mode) && (params->sleepType == kIOPMSleepTypeDeepIdle || params->sleepType == kIOPMSleepTypeStandby))
+		while (callbackHBFX->isStandbyEnabled(delta_time, pmset_default_mode) &&
+			   (params->sleepType == kIOPMSleepTypeDeepIdle || params->sleepType == kIOPMSleepTypeStandby || params->sleepType == kIOPMSleepTypeNormalSleep))
 		{
 			IOPMPowerSource *power_source = callbackHBFX->getPowerSource();
 			if (power_source && power_source->batteryInstalled()) {
@@ -557,6 +570,14 @@ void HBFX::processKernel(KernelPatcher &patcher)
 				}
 				else
 					SYSLOG("HBFX", "IOService instance does not have workLoop");
+			}
+			
+			if (ADDPR(hbfx_config).autoHibernateMode & Configuration::DisableStimulusDarkWakeActivityTickle) {
+				KernelPatcher::RouteRequest request	{"__ZN14IOPMrootDomain14evaluatePolicyEij", IOPMrootDomain_evaluatePolicy, orgIOPMrootDomain_evaluatePolicy};
+				if (!patcher.routeMultiple(KernelPatcher::KernelID, &request, 1)) {
+					SYSLOG("HBFX", "patcher.routeMultiple for %s is failed with error %d", request.symbol, patcher.getError());
+					patcher.clearError();
+				}
 			}
 		}
 

@@ -61,8 +61,8 @@ public:
 		WhenBatteryAtCriticalLevel      = 32,
 		// Reserved
 		Reserved1    					= 64,
-		// Reserved
-		Reserverd2						= 128,
+		// Disable power event kStimulusDarkWakeActivityTickle in kernel, so this event cannot be a trigger for switching from dark wake to full wake
+		DisableStimulusDarkWakeActivityTickle = 128,
 		
 		// Next 4 bits are used to specify minimal capacity percent remaining value when hibernation will be forced.
 		// Can be used together with WhenBatteryIsAtWarnLevel or WhenBatteryAtCriticalLevel, when IOPMPowerSource cannot detect
