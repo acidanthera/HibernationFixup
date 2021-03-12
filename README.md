@@ -48,6 +48,14 @@ IOHibernateRTCVariables from the system registry and writes it to NVRAM.
 	- `RemainCapacityBit3` = 1024
 	- `RemainCapacityBit4` = 2048
 
+#### NVRAM options
+The following options can be stored in NVRAM (GUID = E09B9297-7928-4440-9AAB-D1F8536FBF0A), they can be used instead of respective boot-args
+- `hbfx-dump-nvram`  - type Boolean
+- `hbfx-disable-patch-pci`  - type Boolean
+- `hbfx-patch-pci=XHC,IMEI,IGPU,none,false,off` - type String
+- `hbfx-ahbm` - type Number
+
+
 #### Dependencies
 - [Lilu](https://github.com/acidanthera/Lilu)
 

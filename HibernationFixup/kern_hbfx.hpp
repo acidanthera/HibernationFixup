@@ -47,10 +47,10 @@ private:
 	 *  Initialize NVStorage
 	 *
 	 */
-	bool initialize_nvstorage();
+	bool initializeNVStorage();
 
-	// detect whether emuVariable driver exists
-	bool emuVariableIsDetected();
+	// read supported options from NVRAM
+	void readConfigFromNVRAM();
 
 	// return pointer to IOPMPowerSource
 	IOPMPowerSource *getPowerSource();
