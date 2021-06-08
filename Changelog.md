@@ -1,5 +1,8 @@
 HibernationFixup Changelog
 ============================
+#### v1.4.1
+- Added constants for 12.0 support.
+
 #### v1.4.0
 - Auto hibernation: added possibility to disable power event kStimulusDarkWakeActivityTickle in kernel, so this event cannot be a trigger for switching from dark wake to full wake.
 Can be turned on via bit `DisableStimulusDarkWakeActivityTickle=128` in boot-arg `hbfx-ahbm`.
