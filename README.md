@@ -35,9 +35,9 @@ IOHibernateRTCVariables from the system registry and writes it to NVRAM.
 	- `WhenBatteryIsNotCharging` = 8:
 		Auto hibernation can happen when battery is not charging (if bit is not set - no matter whether it is charging)
 	- `WhenBatteryIsAtWarnLevel` = 16:
-		Auto hibernation can happen when battery is at warning level (osx and battery kext are responsible for this level)
+		Auto hibernation can happen when battery is at warning level (macOS and battery kext are responsible for this level)
 	- `WhenBatteryAtCriticalLevel` = 32:
-		Auto hibernation can happen when battery is at critical level (osx and battery kext are responsible for this level)
+		Auto hibernation can happen when battery is at critical level (macOS and battery kext are responsible for this level)
 	- `DisableStimulusDarkWakeActivityTickle` = 128:
 		Disable power event kStimulusDarkWakeActivityTickle in kernel, so this event cannot trigger a switching from dark wake to full wake
 
