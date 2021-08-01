@@ -549,7 +549,7 @@ void HBFX::processKernel(KernelPatcher &patcher)
 				{"__ZN14IOPMrootDomain26setMaintenanceWakeCalendarEPK18IOPMCalendarStruct", IOPMrootDomain_setMaintenanceWakeCalendar, orgIOPMrootDomain_setMaintenanceWakeCalendar},
 				{"_IOHibernateSystemWake", IOHibernateSystemWake, orgIOHibernateSystemWake}
 			};
-			if (!patcher.routeMultiple(KernelPatcher::KernelID, requests, arrsize(requests))) {
+			if (!patcher.routeMultipleLong(KernelPatcher::KernelID, requests, arrsize(requests))) {
 				SYSLOG("HBFX", "patcher.routeMultiple for %s is failed with error %d", requests[0].symbol, patcher.getError());
 				patcher.clearError();
 			}

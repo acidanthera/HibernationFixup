@@ -1,5 +1,8 @@
 HibernationFixup Changelog
 ============================
+#### v1.4.2
+- Use method routeMultipleLong instead of routeMultiple in order to avoid conflict with futire versions of CpuTscSync
+
 #### v1.4.1
 - Added constants for macOS 12 support.
 
