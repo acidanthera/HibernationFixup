@@ -1,5 +1,8 @@
 HibernationFixup Changelog
 ============================
+#### v1.4.3
+- Use method routeMultipleLong instead of routeMultiple in order to avoid conflict with DebugEnhancer
+
 #### v1.4.2
 - Use method routeMultipleLong instead of routeMultiple in order to avoid conflict with future versions of CpuTscSync
 
