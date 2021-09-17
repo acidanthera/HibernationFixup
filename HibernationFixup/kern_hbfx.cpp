@@ -185,9 +185,42 @@ IOReturn HBFX::IOHibernateSystemWake(void)
 void HBFX::IOPMrootDomain_evaluatePolicy(IOPMrootDomain* that, int stimulus, uint32_t arg)
 {
 	DBGLOG("HBFX", "evaluatePolicy called, stimulus = 0x%x", stimulus);
-	if (stimulus == kStimulusDarkWakeActivityTickle) {
-		DBGLOG("HBFX", "evaluatePolicy prevented kStimulusDarkWakeActivityTickle");
-		return;
+	
+	
+	bool forceHibernate = false;
+	auto autoHibernateMode = ADDPR(hbfx_config).autoHibernateMode;
+	IOPMPowerSource *power_source = callbackHBFX->getPowerSource();
+	if (power_source && power_source->batteryInstalled() && !power_source->externalConnected() && !power_source->isCharging()) {
+		bool whenBatteryIsAtWarnLevel = (autoHibernateMode & Configuration::WhenBatteryIsAtWarnLevel);
+		bool whenBatteryAtCriticalLevel = (autoHibernateMode & Configuration::WhenBatteryAtCriticalLevel);
+		int  minimalRemainingCapacity = ((autoHibernateMode & 0xF00) >> 8);
+
+		if (whenBatteryIsAtWarnLevel && power_source->atWarnLevel()) {
+			DBGLOG("HBFX", "Auto hibernate: Battery is at warning level, capacity remaining: %d, force to hibernate", power_source->capacityPercentRemaining());
+			forceHibernate = true;
+		}
+
+		if (whenBatteryAtCriticalLevel && power_source->atCriticalLevel()) {
+			DBGLOG("HBFX", "Auto hibernate: battery is at critical level, capacity remaining: %d, force to hibernate", power_source->capacityPercentRemaining());
+			forceHibernate = true;
+		}
+
+		if (!forceHibernate && (whenBatteryIsAtWarnLevel || whenBatteryAtCriticalLevel) && minimalRemainingCapacity != 0 &&
+			power_source->capacityPercentRemaining() <= minimalRemainingCapacity)
+		{
+			DBGLOG("HBFX", "Auto hibernate: capacity remaining: %d less than minimal: %d, force to hibernate", power_source->capacityPercentRemaining(), minimalRemainingCapacity);
+			forceHibernate = true;
+		}
+		
+		if (forceHibernate && callbackHBFX->nextSleepTimer)
+			callbackHBFX->nextSleepTimer->setTimeoutMS(2000);
+	}
+	
+	if (autoHibernateMode & Configuration::DisableStimulusDarkWakeActivityTickle) {
+		if (stimulus == kStimulusDarkWakeActivityTickle) {
+			DBGLOG("HBFX", "evaluatePolicy prevented kStimulusDarkWakeActivityTickle");
+			return;
+		}
 	}
 	FunctionCast(IOPMrootDomain_evaluatePolicy, callbackHBFX->orgIOPMrootDomain_evaluatePolicy)(that, stimulus, arg);
 }
@@ -547,7 +580,8 @@ void HBFX::processKernel(KernelPatcher &patcher)
 			KernelPatcher::RouteRequest requests[] = {
 				{"__ZN14IOPMrootDomain17willEnterFullWakeEv", IOPMrootDomain_willEnterFullWake, orgIOPMrootDomain_willEnterFullWake},
 				{"__ZN14IOPMrootDomain26setMaintenanceWakeCalendarEPK18IOPMCalendarStruct", IOPMrootDomain_setMaintenanceWakeCalendar, orgIOPMrootDomain_setMaintenanceWakeCalendar},
-				{"_IOHibernateSystemWake", IOHibernateSystemWake, orgIOHibernateSystemWake}
+				{"_IOHibernateSystemWake", IOHibernateSystemWake, orgIOHibernateSystemWake},
+				{"__ZN14IOPMrootDomain14evaluatePolicyEij", IOPMrootDomain_evaluatePolicy, orgIOPMrootDomain_evaluatePolicy}
 			};
 			if (!patcher.routeMultipleLong(KernelPatcher::KernelID, requests, arrsize(requests))) {
 				SYSLOG("HBFX", "patcher.routeMultiple for %s is failed with error %d", requests[0].symbol, patcher.getError());
@@ -578,20 +612,12 @@ void HBFX::processKernel(KernelPatcher &patcher)
 				}
 				else
 					SYSLOG("HBFX", "IOService instance does not have workLoop");
-			}
-			
-			if (ADDPR(hbfx_config).autoHibernateMode & Configuration::DisableStimulusDarkWakeActivityTickle) {
-				KernelPatcher::RouteRequest request	{"__ZN14IOPMrootDomain14evaluatePolicyEij", IOPMrootDomain_evaluatePolicy, orgIOPMrootDomain_evaluatePolicy};
-				if (!patcher.routeMultiple(KernelPatcher::KernelID, &request, 1)) {
-					SYSLOG("HBFX", "patcher.routeMultiple for %s is failed with error %d", request.symbol, patcher.getError());
-					patcher.clearError();
-				}
-			}
+			}			
 		}
 
 		if (nvram_patches_required) {
 			KernelPatcher::RouteRequest request	{"_IOHibernateSystemSleep", IOHibernateSystemSleep, orgIOHibernateSystemSleep};
-			if (!patcher.routeMultipleLong(KernelPatcher::KernelID, &request, 1)) {
+			if (!patcher.routeMultiple(KernelPatcher::KernelID, &request, 1)) {
 				SYSLOG("HBFX", "patcher.routeMultiple for %s is failed with error %d", request.symbol, patcher.getError());
 				patcher.clearError();
 			}

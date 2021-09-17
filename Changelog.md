@@ -1,5 +1,8 @@
 HibernationFixup Changelog
 ============================
+#### v1.4.4
+- Automatically puts macOS into sleep/hibernate mode when WhenBatteryIsAtWarnLevel or WhenBatteryAtCriticalLevel bit is set in hbfx-ahbm. If battery kext does not provide these levels, additional bits for remaining capacity can be specified (RemainCapacityBit1, RemainCapacityBit2, RemainCapacityBit3, RemainCapacityBit4).
+
 #### v1.4.3
 - Use method routeMultipleLong instead of routeMultiple in order to avoid conflict with DebugEnhancer
 
