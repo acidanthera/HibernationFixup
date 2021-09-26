@@ -617,7 +617,7 @@ void HBFX::processKernel(KernelPatcher &patcher)
 
 		if (nvram_patches_required) {
 			KernelPatcher::RouteRequest request	{"_IOHibernateSystemSleep", IOHibernateSystemSleep, orgIOHibernateSystemSleep};
-			if (!patcher.routeMultiple(KernelPatcher::KernelID, &request, 1)) {
+			if (!patcher.routeMultipleLong(KernelPatcher::KernelID, &request, 1)) {
 				SYSLOG("HBFX", "patcher.routeMultiple for %s is failed with error %d", request.symbol, patcher.getError());
 				patcher.clearError();
 			}
