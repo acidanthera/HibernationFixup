@@ -43,10 +43,14 @@ IOHibernateRTCVariables from the system registry and writes it to NVRAM.
 
 	Next 4 bits are used to specify minimal capacity percent remaining value when hibernation will be forced.
 	Can be used together with WhenBatteryIsAtWarnLevel or WhenBatteryAtCriticalLevel, when IOPMPowerSource cannot detect warning or critical battery level
-	- `RemainCapacityBit1` = 256
-	- `RemainCapacityBit2` = 512
-	- `RemainCapacityBit3` = 1024
-	- `RemainCapacityBit4` = 2048
+	- `RemainCapacityBit1` = 256  (1)
+	- `RemainCapacityBit2` = 512  (2)
+	- `RemainCapacityBit3` = 1024 (4)
+	- `RemainCapacityBit4` = 2048 (8)
+	Specified minimal capacity will be also used to put macOS into sleep/hibernation state (when the remaining capacity is less than it).
+	4 bits can be used to specify the battery levels from 1 to 15. Bits 1-4 are 1,2,4,8 in percentage, so for example if you want to have 
+	10 percent level to be the point where the laptop goes into sleep/hibernation, you would add Bits 2 and 3 which would be 512+1024=1536 
+	(2+8=10 percent) in hbfx-ahbm.
 
 #### NVRAM options
 The following options can be stored in NVRAM (GUID = E09B9297-7928-4440-9AAB-D1F8536FBF0A), they can be used instead of respective boot-args
