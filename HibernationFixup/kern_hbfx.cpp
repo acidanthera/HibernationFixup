@@ -566,24 +566,18 @@ void HBFX::processKernel(KernelPatcher &patcher)
 		DBGLOG("HBFX", "current ignored_device_list value: %s", ADDPR(hbfx_config).ignored_device_list);
 		
 		bool auto_hibernate_mode_on = (ADDPR(hbfx_config).autoHibernateMode & Configuration::EnableAutoHibernation);
-		if (!ADDPR(hbfx_config).dumpNvram && emulatedNVRAM)
-			ADDPR(hbfx_config).dumpNvram = true;
-		bool nvram_patches_required = (ADDPR(hbfx_config).dumpNvram == true || !checkRTCExtendedMemory());
-		if (!nvram_patches_required)
-		{
-			DBGLOG("HBFX", "all nvram kernel patches will be skipped since the second bank of RTC memory is available");
-			if (!auto_hibernate_mode_on)
-				return;
-		}
+		bool whenBatteryIsAtWarnLevel = (ADDPR(hbfx_config).autoHibernateMode & Configuration::WhenBatteryIsAtWarnLevel);
+		bool whenBatteryAtCriticalLevel = (ADDPR(hbfx_config).autoHibernateMode & Configuration::WhenBatteryAtCriticalLevel);
 		
-		if (auto_hibernate_mode_on) {
+		if (auto_hibernate_mode_on || whenBatteryIsAtWarnLevel || whenBatteryAtCriticalLevel) {
 			KernelPatcher::RouteRequest requests[] = {
+				{"__ZN14IOPMrootDomain14evaluatePolicyEij", IOPMrootDomain_evaluatePolicy, orgIOPMrootDomain_evaluatePolicy},
 				{"__ZN14IOPMrootDomain17willEnterFullWakeEv", IOPMrootDomain_willEnterFullWake, orgIOPMrootDomain_willEnterFullWake},
 				{"__ZN14IOPMrootDomain26setMaintenanceWakeCalendarEPK18IOPMCalendarStruct", IOPMrootDomain_setMaintenanceWakeCalendar, orgIOPMrootDomain_setMaintenanceWakeCalendar},
-				{"_IOHibernateSystemWake", IOHibernateSystemWake, orgIOHibernateSystemWake},
-				{"__ZN14IOPMrootDomain14evaluatePolicyEij", IOPMrootDomain_evaluatePolicy, orgIOPMrootDomain_evaluatePolicy}
+				{"_IOHibernateSystemWake", IOHibernateSystemWake, orgIOHibernateSystemWake}
 			};
-			if (!patcher.routeMultipleLong(KernelPatcher::KernelID, requests, arrsize(requests))) {
+			size_t request_count = auto_hibernate_mode_on ? arrsize(requests) : 1;
+			if (!patcher.routeMultipleLong(KernelPatcher::KernelID, requests, request_count)) {
 				SYSLOG("HBFX", "patcher.routeMultiple for %s is failed with error %d", requests[0].symbol, patcher.getError());
 				patcher.clearError();
 			}
@@ -613,6 +607,15 @@ void HBFX::processKernel(KernelPatcher &patcher)
 				else
 					SYSLOG("HBFX", "IOService instance does not have workLoop");
 			}			
+		}
+		
+		if (!ADDPR(hbfx_config).dumpNvram && emulatedNVRAM)
+			ADDPR(hbfx_config).dumpNvram = true;
+		bool nvram_patches_required = (ADDPR(hbfx_config).dumpNvram == true || !checkRTCExtendedMemory());
+		if (!nvram_patches_required)
+		{
+			DBGLOG("HBFX", "all nvram kernel patches will be skipped since the second bank of RTC memory is available");
+			return;
 		}
 
 		if (nvram_patches_required) {
