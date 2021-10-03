@@ -185,37 +185,10 @@ IOReturn HBFX::IOHibernateSystemWake(void)
 void HBFX::IOPMrootDomain_evaluatePolicy(IOPMrootDomain* that, int stimulus, uint32_t arg)
 {
 	DBGLOG("HBFX", "evaluatePolicy called, stimulus = 0x%x", stimulus);
+
+	callbackHBFX->checkCapacity();
 	
-	
-	bool forceHibernate = false;
 	auto autoHibernateMode = ADDPR(hbfx_config).autoHibernateMode;
-	IOPMPowerSource *power_source = callbackHBFX->getPowerSource();
-	if (power_source && power_source->batteryInstalled() && !power_source->externalConnected() && !power_source->isCharging()) {
-		bool whenBatteryIsAtWarnLevel = (autoHibernateMode & Configuration::WhenBatteryIsAtWarnLevel);
-		bool whenBatteryAtCriticalLevel = (autoHibernateMode & Configuration::WhenBatteryAtCriticalLevel);
-		int  minimalRemainingCapacity = ((autoHibernateMode & 0xF00) >> 8);
-
-		if (whenBatteryIsAtWarnLevel && power_source->atWarnLevel()) {
-			DBGLOG("HBFX", "Auto hibernate: Battery is at warning level, capacity remaining: %d, force to hibernate", power_source->capacityPercentRemaining());
-			forceHibernate = true;
-		}
-
-		if (whenBatteryAtCriticalLevel && power_source->atCriticalLevel()) {
-			DBGLOG("HBFX", "Auto hibernate: battery is at critical level, capacity remaining: %d, force to hibernate", power_source->capacityPercentRemaining());
-			forceHibernate = true;
-		}
-
-		if (!forceHibernate && (whenBatteryIsAtWarnLevel || whenBatteryAtCriticalLevel) && minimalRemainingCapacity != 0 &&
-			power_source->capacityPercentRemaining() <= minimalRemainingCapacity)
-		{
-			DBGLOG("HBFX", "Auto hibernate: capacity remaining: %d less than minimal: %d, force to hibernate", power_source->capacityPercentRemaining(), minimalRemainingCapacity);
-			forceHibernate = true;
-		}
-		
-		if (forceHibernate && callbackHBFX->nextSleepTimer)
-			callbackHBFX->nextSleepTimer->setTimeoutMS(2000);
-	}
-	
 	if (autoHibernateMode & Configuration::DisableStimulusDarkWakeActivityTickle) {
 		if (stimulus == kStimulusDarkWakeActivityTickle) {
 			DBGLOG("HBFX", "evaluatePolicy prevented kStimulusDarkWakeActivityTickle");
@@ -569,15 +542,45 @@ void HBFX::processKernel(KernelPatcher &patcher)
 		bool whenBatteryIsAtWarnLevel = (ADDPR(hbfx_config).autoHibernateMode & Configuration::WhenBatteryIsAtWarnLevel);
 		bool whenBatteryAtCriticalLevel = (ADDPR(hbfx_config).autoHibernateMode & Configuration::WhenBatteryAtCriticalLevel);
 		
-		if (auto_hibernate_mode_on || whenBatteryIsAtWarnLevel || whenBatteryAtCriticalLevel) {
+		if (whenBatteryIsAtWarnLevel || whenBatteryAtCriticalLevel) {
+			if (!checkCapacityTimer) {
+				if (!workLoop)
+					workLoop = IOWorkLoop::workLoop();
+
+				if (!workLoop)
+					workLoop = IOWorkLoop::workLoop();
+					
+				if (workLoop) {
+					checkCapacityTimer = IOTimerEventSource::timerEventSource(workLoop,
+					[](OSObject *owner, IOTimerEventSource *sender) {
+						callbackHBFX->checkCapacity();
+						if (sender)
+							sender->setTimeoutMS(60000);
+					});
+					
+					if (checkCapacityTimer) {
+						IOReturn result = workLoop->addEventSource(checkCapacityTimer);
+						if (result != kIOReturnSuccess)
+							SYSLOG("HBFX", "addEventSource failed");
+						else
+							checkCapacityTimer->setTimeoutMS(60000);
+					}
+					else
+						SYSLOG("HBFX", "timerEventSource failed");
+				}
+				else
+					SYSLOG("HBFX", "IOService instance does not have workLoop");
+			}
+		}
+		
+		if (auto_hibernate_mode_on) {
 			KernelPatcher::RouteRequest requests[] = {
 				{"__ZN14IOPMrootDomain14evaluatePolicyEij", IOPMrootDomain_evaluatePolicy, orgIOPMrootDomain_evaluatePolicy},
 				{"__ZN14IOPMrootDomain17willEnterFullWakeEv", IOPMrootDomain_willEnterFullWake, orgIOPMrootDomain_willEnterFullWake},
 				{"__ZN14IOPMrootDomain26setMaintenanceWakeCalendarEPK18IOPMCalendarStruct", IOPMrootDomain_setMaintenanceWakeCalendar, orgIOPMrootDomain_setMaintenanceWakeCalendar},
 				{"_IOHibernateSystemWake", IOHibernateSystemWake, orgIOHibernateSystemWake}
 			};
-			size_t request_count = auto_hibernate_mode_on ? arrsize(requests) : 1;
-			if (!patcher.routeMultipleLong(KernelPatcher::KernelID, requests, request_count)) {
+			if (!patcher.routeMultipleLong(KernelPatcher::KernelID, requests, arrsize(requests))) {
 				SYSLOG("HBFX", "patcher.routeMultiple for %s is failed with error %d", requests[0].symbol, patcher.getError());
 				patcher.clearError();
 			}
@@ -1111,4 +1114,38 @@ IOReturn HBFX::explicitlyCallSetMaintenanceWakeCalendar()
 	IOPMCalendarStruct calendar {(UInt32)tm.tm_year, (UInt8)tm.tm_mon, (UInt8)tm.tm_mday, (UInt8)tm.tm_hour, (UInt8)tm.tm_min, (UInt8)tm.tm_sec, (UInt8)kPMCalendarTypeMaintenance};
 	DBGLOG("HBFX", "call setMaintenanceWakeCalendar explicitly");
 	return IOPMrootDomain_setMaintenanceWakeCalendar(IOService::getPMRootDomain(), &calendar);
+}
+
+//==============================================================================
+
+void HBFX::checkCapacity()
+{
+	bool forceHibernate = false;
+	auto autoHibernateMode = ADDPR(hbfx_config).autoHibernateMode;
+	IOPMPowerSource *power_source = callbackHBFX->getPowerSource();
+	if (power_source && power_source->batteryInstalled() && !power_source->externalConnected() && !power_source->isCharging()) {
+		bool whenBatteryIsAtWarnLevel = (autoHibernateMode & Configuration::WhenBatteryIsAtWarnLevel);
+		bool whenBatteryAtCriticalLevel = (autoHibernateMode & Configuration::WhenBatteryAtCriticalLevel);
+		int  minimalRemainingCapacity = ((autoHibernateMode & 0xF00) >> 8);
+
+		if (whenBatteryIsAtWarnLevel && power_source->atWarnLevel()) {
+			DBGLOG("HBFX", "Auto hibernate: Battery is at warning level, capacity remaining: %d, force to hibernate", power_source->capacityPercentRemaining());
+			forceHibernate = true;
+		}
+
+		if (whenBatteryAtCriticalLevel && power_source->atCriticalLevel()) {
+			DBGLOG("HBFX", "Auto hibernate: battery is at critical level, capacity remaining: %d, force to hibernate", power_source->capacityPercentRemaining());
+			forceHibernate = true;
+		}
+
+		if (!forceHibernate && (whenBatteryIsAtWarnLevel || whenBatteryAtCriticalLevel) && minimalRemainingCapacity != 0 &&
+			power_source->capacityPercentRemaining() <= minimalRemainingCapacity)
+		{
+			DBGLOG("HBFX", "Auto hibernate: capacity remaining: %d less than minimal: %d, force to hibernate", power_source->capacityPercentRemaining(), minimalRemainingCapacity);
+			forceHibernate = true;
+		}
+		
+		if (forceHibernate && callbackHBFX->nextSleepTimer)
+			callbackHBFX->nextSleepTimer->setTimeoutMS(2000);
+	}
 }

@@ -59,6 +59,8 @@ private:
 	bool isStandbyEnabled(uint32_t &delta_time, bool &pmset_default_mode);
 	
 	IOReturn explicitlyCallSetMaintenanceWakeCalendar();
+	
+	void checkCapacity();
 
 	/**
 	 *  Hooked methods / callbacks
@@ -153,6 +155,7 @@ private:
 	NVStorage nvstorage;
 	IOWorkLoop *workLoop {};
 	IOTimerEventSource *nextSleepTimer {};
+	IOTimerEventSource *checkCapacityTimer {};
 	
 	bool emulatedNVRAM {false};
 };
