@@ -573,7 +573,7 @@ void HBFX::processKernel(KernelPatcher &patcher)
 			}
 		}
 		
-		if (auto_hibernate_mode_on) {
+		if (auto_hibernate_mode_on || whenBatteryIsAtWarnLevel || whenBatteryAtCriticalLevel) {
 			KernelPatcher::RouteRequest requests[] = {
 				{"__ZN14IOPMrootDomain14evaluatePolicyEij", IOPMrootDomain_evaluatePolicy, orgIOPMrootDomain_evaluatePolicy},
 				{"__ZN14IOPMrootDomain17willEnterFullWakeEv", IOPMrootDomain_willEnterFullWake, orgIOPMrootDomain_willEnterFullWake},
@@ -1120,7 +1120,7 @@ IOReturn HBFX::explicitlyCallSetMaintenanceWakeCalendar()
 
 void HBFX::checkCapacity()
 {
-	bool forceHibernate = false;
+	bool forceSleep = false;
 	auto autoHibernateMode = ADDPR(hbfx_config).autoHibernateMode;
 	IOPMPowerSource *power_source = callbackHBFX->getPowerSource();
 	if (power_source && power_source->batteryInstalled() && !power_source->externalConnected() && !power_source->isCharging()) {
@@ -1129,23 +1129,26 @@ void HBFX::checkCapacity()
 		int  minimalRemainingCapacity = ((autoHibernateMode & 0xF00) >> 8);
 
 		if (whenBatteryIsAtWarnLevel && power_source->atWarnLevel()) {
-			DBGLOG("HBFX", "Auto hibernate: Battery is at warning level, capacity remaining: %d, force to hibernate", power_source->capacityPercentRemaining());
-			forceHibernate = true;
+			DBGLOG("HBFX", "Auto hibernate: Battery is at warning level, capacity remaining: %d, force to sleep", power_source->capacityPercentRemaining());
+			forceSleep = true;
 		}
 
 		if (whenBatteryAtCriticalLevel && power_source->atCriticalLevel()) {
-			DBGLOG("HBFX", "Auto hibernate: battery is at critical level, capacity remaining: %d, force to hibernate", power_source->capacityPercentRemaining());
-			forceHibernate = true;
+			DBGLOG("HBFX", "Auto hibernate: battery is at critical level, capacity remaining: %d, force to sleep", power_source->capacityPercentRemaining());
+			forceSleep = true;
 		}
 
-		if (!forceHibernate && (whenBatteryIsAtWarnLevel || whenBatteryAtCriticalLevel) && minimalRemainingCapacity != 0 &&
+		if (!forceSleep && (whenBatteryIsAtWarnLevel || whenBatteryAtCriticalLevel) && minimalRemainingCapacity != 0 &&
 			power_source->capacityPercentRemaining() <= minimalRemainingCapacity)
 		{
-			DBGLOG("HBFX", "Auto hibernate: capacity remaining: %d less than minimal: %d, force to hibernate", power_source->capacityPercentRemaining(), minimalRemainingCapacity);
-			forceHibernate = true;
+			DBGLOG("HBFX", "Auto hibernate: capacity remaining: %d less than minimal: %d, force to sleep", power_source->capacityPercentRemaining(), minimalRemainingCapacity);
+			forceSleep = true;
 		}
 		
-		if (forceHibernate && callbackHBFX->nextSleepTimer)
-			callbackHBFX->nextSleepTimer->setTimeoutMS(2000);
+		if (forceSleep && callbackHBFX->nextSleepTimer) {
+			IOReturn result = callbackHBFX->nextSleepTimer->setTimeoutMS(2000);
+			if (result != kIOReturnSuccess)
+				SYSLOG("HBFX", "Failed to set timeout, error code: 0x%x", result);
+		}
 	}
 }
