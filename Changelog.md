@@ -1,5 +1,8 @@
 HibernationFixup Changelog
 ============================
+#### v1.4.5
+- When battery level is critical, try to put macOS into sleep/hibernate mode only once per minute.
+
 #### v1.4.4
 - Automatically puts macOS into sleep/hibernate mode when WhenBatteryIsAtWarnLevel or WhenBatteryAtCriticalLevel bit is set in hbfx-ahbm. If battery kext does not provide these levels, additional bits for remaining capacity can be specified (RemainCapacityBit1, RemainCapacityBit2, RemainCapacityBit3, RemainCapacityBit4).
 

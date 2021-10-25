@@ -161,6 +161,11 @@ IOReturn HBFX::IOHibernateSystemWake(void)
 
 	if (callbackHBFX->nextSleepTimer)
 		callbackHBFX->nextSleepTimer->cancelTimeout();
+	
+	if (callbackHBFX->checkCapacityTimer) {
+		callbackHBFX->checkCapacityTimer->cancelTimeout();
+		callbackHBFX->checkCapacityTimer->setTimeoutMS(60000);
+	}
 
 	if (result == KERN_SUCCESS && wakeType && wakeReason)
 	{
@@ -185,8 +190,6 @@ IOReturn HBFX::IOHibernateSystemWake(void)
 void HBFX::IOPMrootDomain_evaluatePolicy(IOPMrootDomain* that, int stimulus, uint32_t arg)
 {
 	DBGLOG("HBFX", "evaluatePolicy called, stimulus = 0x%x", stimulus);
-
-	callbackHBFX->checkCapacity();
 	
 	auto autoHibernateMode = ADDPR(hbfx_config).autoHibernateMode;
 	if (autoHibernateMode & Configuration::DisableStimulusDarkWakeActivityTickle) {
@@ -218,6 +221,11 @@ void HBFX::IOPMrootDomain_willEnterFullWake(IOPMrootDomain* that)
 
 	if (callbackHBFX->nextSleepTimer)
 		callbackHBFX->nextSleepTimer->cancelTimeout();
+
+	if (callbackHBFX->checkCapacityTimer) {
+		callbackHBFX->checkCapacityTimer->cancelTimeout();
+		callbackHBFX->checkCapacityTimer->setTimeoutMS(60000);
+	}
 }
 
 //==============================================================================
@@ -505,6 +513,14 @@ IOReturn HBFX::IOPCIBridge_restoreMachineState(IOService *that, IOOptionBits opt
 	if (kMachineRestoreDehibernate & options)
 		callbackHBFX->correct_pci_config_command = false;
 	
+	if (callbackHBFX->nextSleepTimer)
+		callbackHBFX->nextSleepTimer->cancelTimeout();
+
+	if (callbackHBFX->checkCapacityTimer) {
+		callbackHBFX->checkCapacityTimer->cancelTimeout();
+		callbackHBFX->checkCapacityTimer->setTimeoutMS(60000);
+	}
+
 	return result;
 }
 
@@ -959,6 +975,8 @@ void HBFX::readConfigFromNVRAM()
 	}
 	else
 	{
+		DBGLOG("HBFX", "readConfigFromNVRAM: use EfiRuntimeServices");
+		
 		auto rt = EfiRuntimeServices::get(true);
 		if (rt) {
 			constexpr const size_t buf_size = 64;
