@@ -1,5 +1,8 @@
 HibernationFixup Changelog
 ============================
+#### v1.4.6
+- Added constants for macOS 13 support
+
 #### v1.4.5
 - When battery level is critical, try to put macOS into sleep/hibernate mode only once per minute.
 
