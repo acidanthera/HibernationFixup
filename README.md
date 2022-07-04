@@ -41,8 +41,8 @@ IOHibernateRTCVariables from the system registry and writes it to NVRAM.
 	- `DisableStimulusDarkWakeActivityTickle` = 128:
 		Disable power event kStimulusDarkWakeActivityTickle in kernel, so this event cannot trigger a switching from dark wake to full wake
 
-	Next 4 bits are used to specify minimal capacity percent remaining value when hibernation will be forced.
-	Can be used together with WhenBatteryIsAtWarnLevel or WhenBatteryAtCriticalLevel, when IOPMPowerSource cannot detect warning or critical battery level
+    When when IOPMPowerSource cannot detect warning or critical battery level (it happens on hackintosh), 
+	next 4 bits can be used to specify minimal capacity percent remaining value when hibernation will be forced:
 	- `RemainCapacityBit1` = 256  (1)
 	- `RemainCapacityBit2` = 512  (2)
 	- `RemainCapacityBit3` = 1024 (4)

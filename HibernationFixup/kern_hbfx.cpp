@@ -381,8 +381,7 @@ IOReturn HBFX::X86PlatformPlugin_sleepPolicyHandler(void * target, IOPMSystemSle
 						forceHibernate = true;
 					}
 
-					if (!forceHibernate && (whenBatteryIsAtWarnLevel || whenBatteryAtCriticalLevel) && minimalRemainingCapacity != 0 &&
-						power_source->capacityPercentRemaining() <= minimalRemainingCapacity)
+					if (!forceHibernate && minimalRemainingCapacity != 0 && power_source->capacityPercentRemaining() <= minimalRemainingCapacity)
 					{
 						DBGLOG("HBFX", "Auto hibernate: capacity remaining: %d less than minimal: %d, force to hibernate", power_source->capacityPercentRemaining(), minimalRemainingCapacity);
 						forceHibernate = true;
@@ -557,8 +556,9 @@ void HBFX::processKernel(KernelPatcher &patcher)
 		bool auto_hibernate_mode_on = (ADDPR(hbfx_config).autoHibernateMode & Configuration::EnableAutoHibernation);
 		bool whenBatteryIsAtWarnLevel = (ADDPR(hbfx_config).autoHibernateMode & Configuration::WhenBatteryIsAtWarnLevel);
 		bool whenBatteryAtCriticalLevel = (ADDPR(hbfx_config).autoHibernateMode & Configuration::WhenBatteryAtCriticalLevel);
+		int  minimalRemainingCapacity = ((ADDPR(hbfx_config).autoHibernateMode & 0xF00) >> 8);
 		
-		if (whenBatteryIsAtWarnLevel || whenBatteryAtCriticalLevel) {
+		if (whenBatteryIsAtWarnLevel || whenBatteryAtCriticalLevel || minimalRemainingCapacity != 0) {
 			if (!checkCapacityTimer) {
 				if (!workLoop)
 					workLoop = IOWorkLoop::workLoop();
@@ -589,7 +589,7 @@ void HBFX::processKernel(KernelPatcher &patcher)
 			}
 		}
 		
-		if (auto_hibernate_mode_on || whenBatteryIsAtWarnLevel || whenBatteryAtCriticalLevel) {
+		if (auto_hibernate_mode_on || whenBatteryIsAtWarnLevel || whenBatteryAtCriticalLevel || minimalRemainingCapacity != 0) {
 			KernelPatcher::RouteRequest requests[] = {
 				{"__ZN14IOPMrootDomain14evaluatePolicyEij", IOPMrootDomain_evaluatePolicy, orgIOPMrootDomain_evaluatePolicy},
 				{"__ZN14IOPMrootDomain17willEnterFullWakeEv", IOPMrootDomain_willEnterFullWake, orgIOPMrootDomain_willEnterFullWake},
@@ -1156,8 +1156,7 @@ void HBFX::checkCapacity()
 			forceSleep = true;
 		}
 
-		if (!forceSleep && (whenBatteryIsAtWarnLevel || whenBatteryAtCriticalLevel) && minimalRemainingCapacity != 0 &&
-			power_source->capacityPercentRemaining() <= minimalRemainingCapacity)
+		if (!forceSleep && minimalRemainingCapacity != 0 && power_source->capacityPercentRemaining() <= minimalRemainingCapacity)
 		{
 			DBGLOG("HBFX", "Auto hibernate: capacity remaining: %d less than minimal: %d, force to sleep", power_source->capacityPercentRemaining(), minimalRemainingCapacity);
 			forceSleep = true;
