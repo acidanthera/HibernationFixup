@@ -448,7 +448,6 @@ IOReturn HBFX::X86PlatformPlugin_sleepPolicyHandler(void * target, IOPMSystemSle
 			{
 				DBGLOG("HBFX", "%02d.%02d.%04d %02d:%02d:%02d: Auto hibernate: %d seconds to standby, cancel hibernate",
 					   tm.tm_mday, tm.tm_mon, tm.tm_year, tm.tm_hour, tm.tm_min, tm.tm_sec, vars->standbyTimer);
-				setupHibernate = false;
 				return result;
 			}
 			else
