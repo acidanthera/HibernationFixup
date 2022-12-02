@@ -59,8 +59,8 @@ public:
 		WhenBatteryIsAtWarnLevel        = 16,
 		// Auto hibernation can happen when battery is at critical level (osx is responsible for this level)
 		WhenBatteryAtCriticalLevel      = 32,
-		// Reserved
-		Reserved1    					= 64,
+		// Do not alter next wake up time
+		DoNotOverrideWakeUpTime         = 64,
 		// Disable power event kStimulusDarkWakeActivityTickle in kernel, so this event cannot be a trigger for switching from dark wake to full wake
 		DisableStimulusDarkWakeActivityTickle = 128,
 		

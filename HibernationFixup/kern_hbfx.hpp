@@ -37,54 +37,54 @@ private:
 	 *  @param size    kinfo memory size
 	 */
 	void processKext(KernelPatcher &patcher, size_t index, mach_vm_address_t address, size_t size);
-
+	
 	/**
 	 *  Check the second RTC memory bank availability
 	 */
 	bool checkRTCExtendedMemory();
-
+	
 	/**
 	 *  Initialize NVStorage
 	 *
 	 */
 	bool initializeNVStorage();
-
+	
 	// read supported options from NVRAM
 	void readConfigFromNVRAM();
-
+	
 	// return pointer to IOPMPowerSource
 	IOPMPowerSource *getPowerSource();
 	
 	// return true if standby/auto power off is enabled
-	bool isStandbyEnabled(uint32_t &delta_time, bool &pmset_default_mode);
+	bool isStandbyEnabled(uint32_t &standby_delay, bool &pmset_default_mode);
 	
 	IOReturn explicitlyCallSetMaintenanceWakeCalendar();
 	
 	void checkCapacity();
-
+	
 	/**
 	 *  Hooked methods / callbacks
 	 */
 	static IOReturn     IOHibernateSystemSleep(void);
 	static IOReturn     IOHibernateSystemWake(void);
-
+	
 	static void         IOPMrootDomain_evaluatePolicy(IOPMrootDomain* that, int stimulus, uint32_t arg);
 	static void         IOPMrootDomain_willEnterFullWake(IOPMrootDomain* that);
 	static IOReturn     IOPMrootDomain_setMaintenanceWakeCalendar(IOPMrootDomain* that, IOPMCalendarStruct * calendar);
 	static IOReturn     AppleRTC_setupDateTimeAlarm(void *that, void* rctDateTime);
 	static IOReturn     X86PlatformPlugin_sleepPolicyHandler(void * target, IOPMSystemSleepPolicyVariables * vars, IOPMSystemSleepParameters * params);
-
+	
 	static int          packA(char *inbuf, uint32_t length, uint32_t buflen);
 	static IOReturn     IOPCIBridge_restoreMachineState(IOService *that, IOOptionBits options, IOService * device);
 	static void         IOPCIDevice_extendedConfigWrite16(IOService *that, UInt64 offset, UInt16 data);
-
-
+	
+	
 	/**
 	 *  Trampolines for original method invocations
 	 */
 	mach_vm_address_t orgIOHibernateSystemSleep {};
 	mach_vm_address_t orgIOHibernateSystemWake {};
-
+	
 	mach_vm_address_t orgIOPMrootDomain_evaluatePolicy {};
 	mach_vm_address_t orgIOPMrootDomain_willEnterFullWake {};
 	mach_vm_address_t orgIOPMrootDomain_setMaintenanceWakeCalendar {};
@@ -93,16 +93,16 @@ private:
 	mach_vm_address_t orgPackA {};
 	mach_vm_address_t orgIOPCIBridge_restoreMachineState {};
 	mach_vm_address_t orgIOPCIDevice_extendedConfigWrite16 {};
-
+	
 	/**
 	 *  Sync file buffers & interrupts & preemption control
 	 */
 	using t_sync = int (*) (__unused proc_t p, __unused struct sync_args *uap, __unused int32_t *retval);
 	t_sync sync {nullptr};
-
+	
 	using t_preemption_enabled = boolean_t (*) (void);
 	t_preemption_enabled preemption_enabled {nullptr};
-
+	
 	using t_enable_preemption = void (*) (void);
 	t_enable_preemption enable_preemption {nullptr};
 	
@@ -124,8 +124,11 @@ private:
 	using t_convertSecondsToDateTime = int64_t (*) (int64_t seconds, void *rctDateTime);
 	t_convertSecondsToDateTime convertSecondsToDateTime {nullptr};
 	
+	using t_checkSystemSleepEnabled = bool (*) (IOPMrootDomain* that);
+	t_checkSystemSleepEnabled checkSystemSleepEnabled {nullptr};
+	
 	bool    correct_pci_config_command {false};
-
+	
 	uint32_t  	latestStandbyDelay {0};
 	uint32_t    latestPoweroffDelay {0};
 	uint32_t  	latestHibernateMode {0};
@@ -136,7 +139,7 @@ private:
 	uint32_t    sleepFlags {0};
 	bool	  	sleepServiceWake {false};
 	bool	  	wakeCalendarSet {false};
-
+	
 	/**
 	 *  Current progress mask
 	 */
@@ -156,8 +159,10 @@ private:
 	IOWorkLoop *workLoop {};
 	IOTimerEventSource *nextSleepTimer {};
 	IOTimerEventSource *checkCapacityTimer {};
-	
 	bool emulatedNVRAM {false};
+#ifdef DEBUG
+	int lastStimulus {};
+#endif
 };
 
 #endif /* kern_hbfx_hpp */

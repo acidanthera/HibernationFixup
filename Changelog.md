@@ -1,5 +1,9 @@
 HibernationFixup Changelog
 ============================
+#### v1.4.7
+- Respect parameters `standbydelaylow`, `standbydelayhigh`, `highstandbythreshold` set via pmset utility
+- Introduce a new bit in hbfx-ahbm boot-arg: `DoNotOverrideWakeUpTime` = 64, to let macOS decide when wake for standby sleep maintenance
+
 #### v1.4.6
 - Added constants for macOS 13 support
 - Decouple WhenBatteryIsNotCharging/WhenBatteryIsAtWarnLevel and minimal capacity in parameter `hbfx-ahbm`

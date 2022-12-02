@@ -22,11 +22,22 @@
 #define kGlobalBoot0082Key              NVRAM_PREFIX(NVRAM_GLOBAL_GUID, kBoot0082Key)
 #define kGlobalBootNextKey              NVRAM_PREFIX(NVRAM_GLOBAL_GUID, kBootNextKey)
 
-#define kAppleSleepDisabled				"SleepDisabled"
+#define kAppleSleepDisabled                     "SleepDisabled"
 
 #define kIOPMRootDomainWakeTypeSleepService     "SleepService"
 #define kIOPMRootDomainWakeTypeMaintenance      "Maintenance"
-#define kIOPMAutoPowerOffEnabledKey         "AutoPowerOff Enabled"
+#define kIOPMRootDomainWakeTypeSleepTimer       "SleepTimer"
+#define kIOPMrootDomainWakeTypeLowBattery       "LowBattery"
+#define kIOPMRootDomainWakeTypeUser             "User"
+#define kIOPMRootDomainWakeTypeAlarm            "Alarm"
+#define kIOPMRootDomainWakeTypeNetwork          "Network"
+#define kIOPMRootDomainWakeTypeHIDActivity      "HID Activity"
+#define kIOPMRootDomainWakeTypeNotification     "Notification"
+#define kIOPMRootDomainWakeTypeHibernateError   "HibernateError"
+
+
+#define kIOPMAutoPowerOffEnabledKey             "AutoPowerOff Enabled"
+#define kIOPMSystemDefaultOverrideKey           "SystemPowerProfileOverrideDict"
 
 /* kIOPMUserIsActiveKey
  * Key refers to a boolean value that indicates if the user is active.

@@ -38,6 +38,8 @@ IOHibernateRTCVariables from the system registry and writes it to NVRAM.
 		Auto hibernation can happen when battery is at warning level (macOS and battery kext are responsible for this level)
 	- `WhenBatteryAtCriticalLevel` = 32:
 		Auto hibernation can happen when battery is at critical level (macOS and battery kext are responsible for this level)
+	- `DoNotOverrideWakeUpTime` = 64:
+		Do not alter next wake up time, macOS is fully responsible for sleep maintenance dark wakes
 	- `DisableStimulusDarkWakeActivityTickle` = 128:
 		Disable power event kStimulusDarkWakeActivityTickle in kernel, so this event cannot trigger a switching from dark wake to full wake
 
