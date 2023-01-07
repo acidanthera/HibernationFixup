@@ -211,4 +211,12 @@ enum {
 	kStimulusEnterUserActiveState,      // 10
 	kStimulusLeaveUserActiveState       // 11
 };
+
+// For requestFullWake()
+enum FullWakeReason {
+	kFullWakeReasonNone = 0,
+	kFullWakeReasonLocalUser = 1,
+	kFullWakeReasonDisplayOn = 2,
+	fFullWakeReasonDisplayOnAndLocalUser = 3
+};
 #endif /* osx_defines_h */

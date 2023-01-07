@@ -215,30 +215,34 @@ void HBFX::IOPMrootDomain_evaluatePolicy(IOPMrootDomain* that, int stimulus, uin
 	FunctionCast(IOPMrootDomain_evaluatePolicy, callbackHBFX->orgIOPMrootDomain_evaluatePolicy)(that, stimulus, arg);
 }
 
-//==============================================================================
+//==============================================================================	
 
-void HBFX::IOPMrootDomain_willEnterFullWake(IOPMrootDomain* that)
+void HBFX::IOPMrootDomain_requestFullWake(IOPMrootDomain* that, uint32_t reason)
 {
-	DBGLOG("HBFX", "willEnterFullWake called");
-	FunctionCast(IOPMrootDomain_willEnterFullWake, callbackHBFX->orgIOPMrootDomain_willEnterFullWake)(that);
+	DBGLOG("HBFX", "requestFullWake called, reason = %d", reason);
+	FunctionCast(IOPMrootDomain_requestFullWake, callbackHBFX->orgIOPMrootDomain_requestFullWake)(that, reason);
 
-	callbackHBFX->sleepServiceWake    = false;
-	callbackHBFX->wakeCalendarSet     = false;
-	callbackHBFX->latestHibernateMode = 0;
-	callbackHBFX->latestStandbyDelay  = 0;
-	callbackHBFX->latestPoweroffDelay = 0;
-	callbackHBFX->sleepPhase          = -1;
-	callbackHBFX->sleepFactors        = 0;
-	callbackHBFX->sleepReason         = 0;
-	callbackHBFX->sleepType           = 0;
-	callbackHBFX->sleepFlags          = 0;
-
-	if (callbackHBFX->nextSleepTimer)
-		callbackHBFX->nextSleepTimer->cancelTimeout();
-
-	if (callbackHBFX->checkCapacityTimer) {
-		callbackHBFX->checkCapacityTimer->cancelTimeout();
-		callbackHBFX->checkCapacityTimer->setTimeoutMS(60000);
+	
+	if (reason == kFullWakeReasonLocalUser || reason == fFullWakeReasonDisplayOnAndLocalUser)
+	{
+		callbackHBFX->sleepServiceWake    = false;
+		callbackHBFX->wakeCalendarSet     = false;
+		callbackHBFX->latestHibernateMode = 0;
+		callbackHBFX->latestStandbyDelay  = 0;
+		callbackHBFX->latestPoweroffDelay = 0;
+		callbackHBFX->sleepPhase          = -1;
+		callbackHBFX->sleepFactors        = 0;
+		callbackHBFX->sleepReason         = 0;
+		callbackHBFX->sleepType           = 0;
+		callbackHBFX->sleepFlags          = 0;
+		
+		if (callbackHBFX->nextSleepTimer)
+			callbackHBFX->nextSleepTimer->cancelTimeout();
+		
+		if (callbackHBFX->checkCapacityTimer) {
+			callbackHBFX->checkCapacityTimer->cancelTimeout();
+			callbackHBFX->checkCapacityTimer->setTimeoutMS(60000);
+		}
 	}
 }
 
@@ -654,7 +658,7 @@ void HBFX::processKernel(KernelPatcher &patcher)
 		if (autoHibernateModeEnabled || whenBatteryIsAtWarnLevel || whenBatteryAtCriticalLevel || minimalRemainingCapacity != 0) {
 			KernelPatcher::RouteRequest requests[] = {
 				{"__ZN14IOPMrootDomain14evaluatePolicyEij", IOPMrootDomain_evaluatePolicy, orgIOPMrootDomain_evaluatePolicy},
-				{"__ZN14IOPMrootDomain17willEnterFullWakeEv", IOPMrootDomain_willEnterFullWake, orgIOPMrootDomain_willEnterFullWake},
+				{"__ZN14IOPMrootDomain15requestFullWakeENS_14FullWakeReasonE", IOPMrootDomain_requestFullWake, orgIOPMrootDomain_requestFullWake},
 				{"_IOHibernateSystemSleep", IOHibernateSystemSleep, orgIOHibernateSystemSleep},
 				{"_IOHibernateSystemWake", IOHibernateSystemWake, orgIOHibernateSystemWake},
 				{"__ZN14IOPMrootDomain26setMaintenanceWakeCalendarEPK18IOPMCalendarStruct", IOPMrootDomain_setMaintenanceWakeCalendar, orgIOPMrootDomain_setMaintenanceWakeCalendar}

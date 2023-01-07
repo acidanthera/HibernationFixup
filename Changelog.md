@@ -1,5 +1,8 @@
 HibernationFixup Changelog
 ============================
+#### v1.4.8
+- Take into account a full wake event only if the local user provoked this event (stabilize switching to hibernate mode)
+
 #### v1.4.7
 - Respect parameters `standbydelaylow`, `standbydelayhigh`, `highstandbythreshold` set via pmset utility
 - Introduce a new bit in hbfx-ahbm boot-arg: `DoNotOverrideWakeUpTime` = 64, to let macOS decide when wake for standby sleep maintenance

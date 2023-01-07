@@ -69,7 +69,7 @@ private:
 	static IOReturn     IOHibernateSystemWake(void);
 	
 	static void         IOPMrootDomain_evaluatePolicy(IOPMrootDomain* that, int stimulus, uint32_t arg);
-	static void         IOPMrootDomain_willEnterFullWake(IOPMrootDomain* that);
+	static void         IOPMrootDomain_requestFullWake(IOPMrootDomain* that, uint32_t reason);
 	static IOReturn     IOPMrootDomain_setMaintenanceWakeCalendar(IOPMrootDomain* that, IOPMCalendarStruct * calendar);
 	static IOReturn     AppleRTC_setupDateTimeAlarm(void *that, void* rctDateTime);
 	static IOReturn     X86PlatformPlugin_sleepPolicyHandler(void * target, IOPMSystemSleepPolicyVariables * vars, IOPMSystemSleepParameters * params);
@@ -86,7 +86,7 @@ private:
 	mach_vm_address_t orgIOHibernateSystemWake {};
 	
 	mach_vm_address_t orgIOPMrootDomain_evaluatePolicy {};
-	mach_vm_address_t orgIOPMrootDomain_willEnterFullWake {};
+	mach_vm_address_t orgIOPMrootDomain_requestFullWake {};
 	mach_vm_address_t orgIOPMrootDomain_setMaintenanceWakeCalendar {};
 	mach_vm_address_t orgX86PlatformPlugin_sleepPolicyHandler {};
 	mach_vm_address_t orgAppleRTC_setupDateTimeAlarm {};
