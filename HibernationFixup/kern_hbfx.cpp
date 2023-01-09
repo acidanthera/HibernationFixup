@@ -460,8 +460,11 @@ IOReturn HBFX::X86PlatformPlugin_sleepPolicyHandler(void * target, IOPMSystemSle
 					   tm.tm_mday, tm.tm_mon, tm.tm_year, tm.tm_hour, tm.tm_min, tm.tm_sec, vars->standbyTimer);
 			}
 		}
-		
-		if (callbackHBFX->sleepPhase < kIOPMSleepPhase2 && setupHibernate)
+
+		DBGLOG("HBFX", "Auto hibernate: setupHibernate %d, wakeCalendarSet %d, sleepServiceWake %d, standby_delay %d",
+			   setupHibernate, callbackHBFX->wakeCalendarSet, callbackHBFX->sleepServiceWake, standby_delay);
+
+		if ((callbackHBFX->sleepPhase < kIOPMSleepPhase2) && setupHibernate)
 		{
 			vars->sleepFactors = callbackHBFX->sleepFactors;
 			vars->sleepReason  = callbackHBFX->sleepReason;
