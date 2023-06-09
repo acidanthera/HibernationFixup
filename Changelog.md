@@ -1,5 +1,9 @@
 HibernationFixup Changelog
 ============================
+
+#### v1.4.9
+- Add macOS 14 (Sonoma) constants
+
 #### v1.4.8
 - Take into account a full wake event only if the local user provoked this event (stabilize switching to hibernate mode)
 
