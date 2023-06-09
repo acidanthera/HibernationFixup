@@ -70,7 +70,7 @@ PluginConfiguration ADDPR(config) {
 	ADDPR(hbfx_config).bootargBeta,
 	arrsize(ADDPR(hbfx_config).bootargBeta),
 	KernelVersion::MountainLion,
-	KernelVersion::Ventura,
+	KernelVersion::Sonoma,
 	[]() {
 		ADDPR(hbfx_config).readArguments();
 		hbfx.init();
