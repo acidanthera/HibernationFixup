@@ -378,7 +378,7 @@ IOReturn HBFX::X86PlatformPlugin_sleepPolicyHandler(void * target, IOPMSystemSle
 				if (callbackHBFX->sleepPhase > kIOPMSleepPhase0)
 				{
 					callbackHBFX->sleepServiceWake = false;
-					if (pmset_default_mode && standby_delay != 0 && !callbackHBFX->wakeCalendarSet && callbackHBFX->sleepPhase > kIOPMSleepPhase0)
+					if (standby_delay != 0 && !callbackHBFX->wakeCalendarSet && callbackHBFX->sleepPhase > kIOPMSleepPhase0)
 						callbackHBFX->explicitlyCallSetMaintenanceWakeCalendar();
 				}
 				break;
@@ -389,7 +389,7 @@ IOReturn HBFX::X86PlatformPlugin_sleepPolicyHandler(void * target, IOPMSystemSle
 				if (callbackHBFX->sleepPhase > kIOPMSleepPhase0)
 				{
 					callbackHBFX->sleepServiceWake = false;
-					if (pmset_default_mode && standby_delay != 0 && !callbackHBFX->wakeCalendarSet && callbackHBFX->sleepPhase > kIOPMSleepPhase0)
+					if (standby_delay != 0 && !callbackHBFX->wakeCalendarSet && callbackHBFX->sleepPhase > kIOPMSleepPhase0)
 						callbackHBFX->explicitlyCallSetMaintenanceWakeCalendar();
 				}
 				break;
@@ -425,7 +425,7 @@ IOReturn HBFX::X86PlatformPlugin_sleepPolicyHandler(void * target, IOPMSystemSle
 			if (callbackHBFX->sleepPhase > kIOPMSleepPhase0)
 			{
 				callbackHBFX->sleepServiceWake = false;
-				if (pmset_default_mode && standby_delay != 0 && !callbackHBFX->wakeCalendarSet && callbackHBFX->sleepPhase > kIOPMSleepPhase0)
+				if (standby_delay != 0 && !callbackHBFX->wakeCalendarSet && callbackHBFX->sleepPhase > kIOPMSleepPhase0)
 					callbackHBFX->explicitlyCallSetMaintenanceWakeCalendar();
 			}
 			break;
@@ -433,7 +433,7 @@ IOReturn HBFX::X86PlatformPlugin_sleepPolicyHandler(void * target, IOPMSystemSle
 
 		if (callbackHBFX->sleepPhase > kIOPMSleepPhase0)
 		{
-			if (pmset_default_mode && standby_delay != 0 && !forceHibernate && !callbackHBFX->wakeCalendarSet && !callbackHBFX->sleepServiceWake)
+			if (standby_delay != 0 && !forceHibernate && !callbackHBFX->wakeCalendarSet && !callbackHBFX->sleepServiceWake)
 				callbackHBFX->explicitlyCallSetMaintenanceWakeCalendar();
 		}
 
@@ -445,7 +445,7 @@ IOReturn HBFX::X86PlatformPlugin_sleepPolicyHandler(void * target, IOPMSystemSle
 #endif
 		
 		bool doNotOverrideWakeUpTime = (ADDPR(hbfx_config).autoHibernateMode & Configuration::DoNotOverrideWakeUpTime);
-		bool setupHibernate = (forceHibernate || !callbackHBFX->wakeCalendarSet || callbackHBFX->sleepServiceWake || (pmset_default_mode && standby_delay == 0));
+		bool setupHibernate = (forceHibernate || !callbackHBFX->wakeCalendarSet || callbackHBFX->sleepServiceWake || standby_delay == 0);
 		if (setupHibernate && doNotOverrideWakeUpTime && !forceHibernate)
 		{
 			if (vars->standbyTimer != 0)
