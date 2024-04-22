@@ -55,7 +55,7 @@ private:
 	// return pointer to IOPMPowerSource
 	IOPMPowerSource *getPowerSource();
 	
-	// return true if standby/auto power off is enabled
+	// return true if standby/autopoweroff is enabled
 	bool isStandbyEnabled(uint32_t &standby_delay, bool &pmset_default_mode);
 	
 	IOReturn explicitlyCallSetMaintenanceWakeCalendar();
@@ -71,7 +71,7 @@ private:
 	static void         IOPMrootDomain_evaluatePolicy(IOPMrootDomain* that, int stimulus, uint32_t arg);
 	static void         IOPMrootDomain_requestFullWake(IOPMrootDomain* that, uint32_t reason);
 	static IOReturn     IOPMrootDomain_setMaintenanceWakeCalendar(IOPMrootDomain* that, IOPMCalendarStruct * calendar);
-	static IOReturn     AppleRTC_setupDateTimeAlarm(void *that, void* rctDateTime);
+	static IOReturn     AppleRTC_setupDateTimeAlarm(void *that, void* rtcDateTime);
 	static IOReturn     X86PlatformPlugin_sleepPolicyHandler(void * target, IOPMSystemSleepPolicyVariables * vars, IOPMSystemSleepParameters * params);
 	
 	static int          packA(char *inbuf, uint32_t length, uint32_t buflen);
@@ -118,10 +118,10 @@ private:
 	using t_ml_set_interrupts_enabled = boolean_t (*) (boolean_t enable);
 	t_ml_set_interrupts_enabled ml_set_interrupts_enabled {nullptr};
 	
-	using t_convertDateTimeToSeconds = int64_t (*) (void *rctDateTime);
+	using t_convertDateTimeToSeconds = int64_t (*) (void *rtcDateTime);
 	t_convertDateTimeToSeconds convertDateTimeToSeconds {nullptr};
 	
-	using t_convertSecondsToDateTime = int64_t (*) (int64_t seconds, void *rctDateTime);
+	using t_convertSecondsToDateTime = int64_t (*) (int64_t seconds, void *rtcDateTime);
 	t_convertSecondsToDateTime convertSecondsToDateTime {nullptr};
 	
 	using t_checkSystemSleepEnabled = bool (*) (IOPMrootDomain* that);
@@ -129,16 +129,16 @@ private:
 	
 	bool    correct_pci_config_command {false};
 	
-	uint32_t  	latestStandbyDelay {0};
+	uint32_t    latestStandbyDelay {0};
 	uint32_t    latestPoweroffDelay {0};
-	uint32_t  	latestHibernateMode {0};
-	uint32_t  	sleepPhase {-1U};
+	uint32_t    latestHibernateMode {0};
+	uint32_t    sleepPhase {-1U};
 	uint64_t    sleepFactors {0};
 	uint32_t    sleepReason {0};
 	uint32_t    sleepType {0};
 	uint32_t    sleepFlags {0};
-	bool	  	sleepServiceWake {false};
-	bool	  	wakeCalendarSet {false};
+	bool        sleepServiceWake {false};
+	bool        wakeCalendarSet {false};
 	
 	/**
 	 *  Current progress mask
