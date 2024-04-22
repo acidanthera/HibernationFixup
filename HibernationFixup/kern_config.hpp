@@ -48,29 +48,29 @@ public:
 	 */
 	enum AutoHibernateModes {
 		// If this flag is set, system will hibernate instead of regular sleep (flags below can be used to limit this behavior)
-		EnableAutoHibernation           = 1,
+		EnableAutoHibernation                   = 1,
 		// Auto hibernation can happen when lid is closed (if bit is not set - no matter which status lid has)
-		WhenLidIsClosed                 = 2,
+		WhenLidIsClosed                         = 2,
 		// Auto hibernation can happen when external power is disconnected (if bit is not set - no matter whether it is connected)
-		WhenExternalPowerIsDisconnected = 4,
+		WhenExternalPowerIsDisconnected         = 4,
 		// Auto hibernation can happen when battery is not charging (if bit is not set - no matter whether it is charging)
-		WhenBatteryIsNotCharging        = 8,
+		WhenBatteryIsNotCharging                = 8,
 		// Auto hibernation can happen when battery is at warning level (osx is responsible for this level)
-		WhenBatteryIsAtWarnLevel        = 16,
+		WhenBatteryIsAtWarnLevel                = 16,
 		// Auto hibernation can happen when battery is at critical level (osx is responsible for this level)
-		WhenBatteryAtCriticalLevel      = 32,
-		// Do not alter next wake up time
-		DoNotOverrideWakeUpTime         = 64,
+		WhenBatteryAtCriticalLevel              = 32,
+		// Do not alter next wake up time, macOS is fully responsible for sleep maintenance dark wakes
+		DoNotOverrideWakeUpTime                 = 64,
 		// Disable power event kStimulusDarkWakeActivityTickle in kernel, so this event cannot be a trigger for switching from dark wake to full wake
-		DisableStimulusDarkWakeActivityTickle = 128,
+		DisableStimulusDarkWakeActivityTickle   = 128,
 		
 		// Next 4 bits are used to specify minimal capacity percent remaining value when hibernation will be forced.
 		// Can be used together with WhenBatteryIsAtWarnLevel or WhenBatteryAtCriticalLevel, when IOPMPowerSource cannot detect
 		// warning or critical battery level
-		RemainCapacityBit1				= 256,
-		RemainCapacityBit2				= 512,
-		RemainCapacityBit3				= 1024,
-		RemainCapacityBit4				= 2048
+		RemainCapacityBit1                      = 256,
+		RemainCapacityBit2                      = 512,
+		RemainCapacityBit3                      = 1024,
+		RemainCapacityBit4                      = 2048
 	};
 	
 	int autoHibernateMode {0};

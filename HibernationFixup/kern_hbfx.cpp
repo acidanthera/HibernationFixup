@@ -289,9 +289,9 @@ IOReturn HBFX::IOPMrootDomain_setMaintenanceWakeCalendar(IOPMrootDomain* that, I
 
 //==============================================================================
 
-IOReturn HBFX::AppleRTC_setupDateTimeAlarm(void *that, void* rctDateTime)
+IOReturn HBFX::AppleRTC_setupDateTimeAlarm(void *that, void* rtcDateTime)
 {
-	DBGLOG("HBFX", "AppleRTC::setupDateTimeAlarm is called, set alarm to seconds: %lld", callbackHBFX->convertDateTimeToSeconds(rctDateTime));
+	DBGLOG("HBFX", "AppleRTC::setupDateTimeAlarm is called, set alarm to seconds: %lld", callbackHBFX->convertDateTimeToSeconds(rtcDateTime));
 
 	if (callbackHBFX->sleepServiceWake) {
 		DBGLOG("HBFX", "AppleRTC::setupDateTimeAlarm called after sleepServiceWake is set");
@@ -315,13 +315,13 @@ IOReturn HBFX::AppleRTC_setupDateTimeAlarm(void *that, void* rctDateTime)
 			gmtime_r(tv.tv_sec, &tm);
 			DBGLOG("HBFX", "Postpone RTC wake to: %02d.%02d.%04d %02d:%02d:%02d", tm.tm_mday, tm.tm_mon, tm.tm_year, tm.tm_hour, tm.tm_min, tm.tm_sec);
 			
-			callbackHBFX->convertSecondsToDateTime(tv.tv_sec, rctDateTime);
+			callbackHBFX->convertSecondsToDateTime(tv.tv_sec, rtcDateTime);
 		}
 	}
 	else
 		SYSLOG("HBFX", "IOPMrootDomain cannot be obtained from AppleRTC");
 
-	return FunctionCast(AppleRTC_setupDateTimeAlarm, callbackHBFX->orgAppleRTC_setupDateTimeAlarm)(that, rctDateTime);
+	return FunctionCast(AppleRTC_setupDateTimeAlarm, callbackHBFX->orgAppleRTC_setupDateTimeAlarm)(that, rtcDateTime);
 }
 
 //==============================================================================
@@ -490,7 +490,7 @@ IOReturn HBFX::X86PlatformPlugin_sleepPolicyHandler(void * target, IOPMSystemSle
 				vars->sleepReason  = callbackHBFX->sleepReason;
 				params->sleepType  = callbackHBFX->sleepType;
 				params->sleepFlags = callbackHBFX->sleepFlags;
-				DBGLOG("HBFX", "%02d.%02d.%04d %02d:%02d:%02d: Auto hibernate: Auto hibernate: sleep phase %d, postpone hibernate",
+				DBGLOG("HBFX", "%02d.%02d.%04d %02d:%02d:%02d: Auto hibernate: sleep phase %d, postpone hibernate",
 					   tm.tm_mday, tm.tm_mon, tm.tm_year, tm.tm_hour, tm.tm_min, tm.tm_sec, callbackHBFX->sleepPhase);
 			}
 			
@@ -594,7 +594,7 @@ void HBFX::IOPCIDevice_extendedConfigWrite16(IOService *that, UInt64 offset, UIn
 		{
 			if (!(data & kIOPCICommandMemorySpace))
 			{
-				DBGLOG("HBFX", "HBFX will add flag kIOPCICommandMemorySpace for deivce %s, offset = %08llX, data = %04X", that->getName(), offset, data);
+				DBGLOG("HBFX", "HBFX will add flag kIOPCICommandMemorySpace for device %s, offset = %08llX, data = %04X", that->getName(), offset, data);
 				data |= kIOPCICommandMemorySpace;
 			}
 		}

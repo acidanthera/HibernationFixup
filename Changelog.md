@@ -3,6 +3,7 @@ HibernationFixup Changelog
 
 #### v1.5.0
 - Auto hibernation: make sure auto-hibernate feature only happens when hibernatemode is set to 3. (Never with mode 0 or 25).
+- Fix minor typos in code and debug log. Plus better formatting.
 
 #### v1.4.9
 - Add macOS 14 (Sonoma) constants
