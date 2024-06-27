@@ -1,5 +1,7 @@
 HibernationFixup Changelog
 ============================
+#### v1.5.1
+- Added constants for macOS 15 support
 
 #### v1.5.0
 - Auto hibernation: make sure auto-hibernate feature only happens when hibernatemode is set to 3. (Never with mode 0 or 25).
