@@ -1,5 +1,8 @@
 HibernationFixup Changelog
 ============================
+#### v1.5.2
+- Adapt code to make it work correclty in macOS Sequoia.
+
 #### v1.5.1
 - Added constants for macOS 15 support
 
