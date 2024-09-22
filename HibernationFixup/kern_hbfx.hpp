@@ -56,7 +56,7 @@ private:
 	IOPMPowerSource *getPowerSource();
 	
 	// return true if standby/autopoweroff is enabled
-	bool isStandbyEnabled(uint32_t &standby_delay, bool &pmset_default_mode);
+	bool isStandbyEnabled(IOPMrootDomain* pm_root, uint32_t &standby_delay, bool &pmset_default_mode);
 	
 	IOReturn explicitlyCallSetMaintenanceWakeCalendar();
 	
@@ -70,7 +70,7 @@ private:
 	
 	static void         IOPMrootDomain_evaluatePolicy(IOPMrootDomain* that, int stimulus, uint32_t arg);
 	static void         IOPMrootDomain_requestFullWake(IOPMrootDomain* that, uint32_t reason);
-	static IOReturn     IOPMrootDomain_setMaintenanceWakeCalendar(IOPMrootDomain* that, IOPMCalendarStruct * calendar);
+	static IOReturn     IOPMrootDomain_setMaintenanceWakeCalendar(IOPMrootDomain* that, const IOPMCalendarStruct* calendar);
 	static IOReturn     AppleRTC_setupDateTimeAlarm(void *that, void* rtcDateTime);
 	static IOReturn     X86PlatformPlugin_sleepPolicyHandler(void * target, IOPMSystemSleepPolicyVariables * vars, IOPMSystemSleepParameters * params);
 	

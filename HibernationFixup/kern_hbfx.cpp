@@ -90,7 +90,8 @@ IOReturn HBFX::IOHibernateSystemSleep(void)
 	{
 		if (!callbackHBFX->checkRTCExtendedMemory())
 		{
-			callbackHBFX->initializeNVStorage();
+			if (!callbackHBFX->initializeNVStorage())
+				return result;
 			
 			OSData *rtc = OSDynamicCast(OSData, IOService::getPMRootDomain()->getProperty(kIOHibernateRTCVariablesKey));
 			if (rtc && !callbackHBFX->nvstorage.exists(kIOHibernateRTCVariablesKey))
@@ -107,7 +108,7 @@ IOReturn HBFX::IOHibernateSystemSleep(void)
 			}
 		}
 
-		if (ADDPR(hbfx_config).dumpNvram)
+		if (ADDPR(hbfx_config).dumpNvram && callbackHBFX->initializeNVStorage())
 		{
 			uint32_t size;
 			if (uint8_t *buf = callbackHBFX->nvstorage.read(kGlobalBoot0082Key, size, NVStorage::OptRaw))
@@ -185,7 +186,7 @@ IOReturn HBFX::IOHibernateSystemWake(void)
 			DBGLOG("HBFX", "IOHibernateSystemWake: Maintenance/SleepService wake");
 			uint32_t standby_delay = 0;
 			bool pmset_default_mode = false;
-			if (callbackHBFX->isStandbyEnabled(standby_delay, pmset_default_mode) && pmset_default_mode && callbackHBFX->nextSleepTimer)
+			if (callbackHBFX->isStandbyEnabled(IOService::getPMRootDomain(), standby_delay, pmset_default_mode) && pmset_default_mode && callbackHBFX->nextSleepTimer)
 				callbackHBFX->nextSleepTimer->setTimeoutMS(20000);
 		}
 	}
@@ -248,7 +249,7 @@ void HBFX::IOPMrootDomain_requestFullWake(IOPMrootDomain* that, uint32_t reason)
 
 //==============================================================================
 
-IOReturn HBFX::IOPMrootDomain_setMaintenanceWakeCalendar(IOPMrootDomain* that, IOPMCalendarStruct * calendar)
+IOReturn HBFX::IOPMrootDomain_setMaintenanceWakeCalendar(IOPMrootDomain* that, const IOPMCalendarStruct* calendar)
 {
 	DBGLOG("HBFX", "Calendar time %02d.%02d.%04d %02d:%02d:%02d, selector: %d", calendar->day, calendar->month, calendar->year,
 		   calendar->hour, calendar->minute, calendar->second, calendar->selector);
@@ -263,7 +264,7 @@ IOReturn HBFX::IOPMrootDomain_setMaintenanceWakeCalendar(IOPMrootDomain* that, I
 	uint32_t standby_delay = 0;
 	bool pmset_default_mode = false;
 	callbackHBFX->wakeCalendarSet = false;
-	if (callbackHBFX->isStandbyEnabled(standby_delay, pmset_default_mode) && pmset_default_mode && standby_delay != 0)
+	if (callbackHBFX->isStandbyEnabled(that, standby_delay, pmset_default_mode) && pmset_default_mode && standby_delay != 0)
 	{
 		struct tm tm;
 		struct timeval tv;
@@ -276,9 +277,9 @@ IOReturn HBFX::IOPMrootDomain_setMaintenanceWakeCalendar(IOPMrootDomain* that, I
 		gmtime_r(tv.tv_sec, &tm);
 		DBGLOG("HBFX", "Postpone maintenance wake to: %02d.%02d.%04d %02d:%02d:%02d", tm.tm_mday, tm.tm_mon, tm.tm_year, tm.tm_hour, tm.tm_min, tm.tm_sec);
 
-		*calendar = { static_cast<UInt32>(tm.tm_year), static_cast<UInt8>(tm.tm_mon), static_cast<UInt8>(tm.tm_mday),
-			static_cast<UInt8>(tm.tm_hour), static_cast<UInt8>(tm.tm_min), static_cast<UInt8>(tm.tm_sec), calendar->selector };
-		result = FunctionCast(IOPMrootDomain_setMaintenanceWakeCalendar, callbackHBFX->orgIOPMrootDomain_setMaintenanceWakeCalendar)(that, calendar);
+		IOPMCalendarStruct overriden_calendar { static_cast<UInt32>(tm.tm_year), static_cast<UInt8>(tm.tm_mon), static_cast<UInt8>(tm.tm_mday),
+												static_cast<UInt8>(tm.tm_hour), static_cast<UInt8>(tm.tm_min), static_cast<UInt8>(tm.tm_sec), calendar->selector };
+		result = FunctionCast(IOPMrootDomain_setMaintenanceWakeCalendar, callbackHBFX->orgIOPMrootDomain_setMaintenanceWakeCalendar)(that, &overriden_calendar);
 		callbackHBFX->wakeCalendarSet = (result == KERN_SUCCESS);
 	}
 	else
@@ -302,7 +303,7 @@ IOReturn HBFX::AppleRTC_setupDateTimeAlarm(void *that, void* rtcDateTime)
 	if (pmRootDomain) {
 		uint32_t standby_delay = 0;
 		bool pmset_default_mode = false;
-		if (callbackHBFX->isStandbyEnabled(standby_delay, pmset_default_mode) && pmset_default_mode && standby_delay != 0)
+		if (callbackHBFX->isStandbyEnabled(pmRootDomain, standby_delay, pmset_default_mode) && pmset_default_mode && standby_delay != 0)
 		{
 			struct tm tm;
 			struct timeval tv;
@@ -362,7 +363,7 @@ IOReturn HBFX::X86PlatformPlugin_sleepPolicyHandler(void * target, IOPMSystemSle
 	uint32_t standby_delay = 0;
 	bool pmset_default_mode = false;
 	auto autoHibernateMode = ADDPR(hbfx_config).autoHibernateMode;
-	while (callbackHBFX->isStandbyEnabled(standby_delay, pmset_default_mode) && pmset_default_mode &&
+	while (callbackHBFX->isStandbyEnabled(IOService::getPMRootDomain(), standby_delay, pmset_default_mode) && pmset_default_mode &&
 		   (params->sleepType == kIOPMSleepTypeDeepIdle || params->sleepType == kIOPMSleepTypeStandby || params->sleepType == kIOPMSleepTypeNormalSleep))
 	{
 		IOPMPowerSource *power_source = callbackHBFX->getPowerSource();
@@ -531,9 +532,8 @@ int HBFX::packA(char *inbuf, uint32_t length, uint32_t buflen)
 				IOSleep(1);
 			}
 
-			if (callbackHBFX->preemption_enabled())
+			if (callbackHBFX->preemption_enabled() && callbackHBFX->initializeNVStorage())
 			{
-				callbackHBFX->initializeNVStorage();
 				unsigned int pi_size = bufpos ? bufpos : length;
 				const unsigned int max_size = 768;
 				counter = 0;
@@ -614,6 +614,12 @@ void HBFX::processKernel(KernelPatcher &patcher)
 		DBGLOG("HBFX", "current patchPCIFamily value: %d", ADDPR(hbfx_config).patchPCIFamily);
 		DBGLOG("HBFX", "current ignored_device_list value: %s", ADDPR(hbfx_config).ignored_device_list);
 		
+		if (IOService::getPMRootDomain() == nullptr)
+		{
+			SYSLOG("HBFX", "processKernel failed: root domain is not available");
+			return;
+		}
+		
 		bool autoHibernateModeEnabled = (ADDPR(hbfx_config).autoHibernateMode & Configuration::EnableAutoHibernation);
 		bool whenBatteryIsAtWarnLevel = (ADDPR(hbfx_config).autoHibernateMode & Configuration::WhenBatteryIsAtWarnLevel);
 		bool whenBatteryAtCriticalLevel = (ADDPR(hbfx_config).autoHibernateMode & Configuration::WhenBatteryAtCriticalLevel);
@@ -659,16 +665,18 @@ void HBFX::processKernel(KernelPatcher &patcher)
 		}
 		
 		if (autoHibernateModeEnabled || whenBatteryIsAtWarnLevel || whenBatteryAtCriticalLevel || minimalRemainingCapacity != 0) {
+			const auto* io_hib_system_sleep = (getKernelVersion() >= KernelVersion::Sequoia) ? "__Z22IOHibernateSystemSleepv" : "_IOHibernateSystemSleep";
+			const auto* io_hib_system_wake  = (getKernelVersion() >= KernelVersion::Sequoia) ? "__Z21IOHibernateSystemWakev"  : "_IOHibernateSystemWake";
 			KernelPatcher::RouteRequest requests[] = {
 				{"__ZN14IOPMrootDomain14evaluatePolicyEij", IOPMrootDomain_evaluatePolicy, orgIOPMrootDomain_evaluatePolicy},
 				{"__ZN14IOPMrootDomain15requestFullWakeENS_14FullWakeReasonE", IOPMrootDomain_requestFullWake, orgIOPMrootDomain_requestFullWake},
-				{"_IOHibernateSystemSleep", IOHibernateSystemSleep, orgIOHibernateSystemSleep},
-				{"_IOHibernateSystemWake", IOHibernateSystemWake, orgIOHibernateSystemWake},
+				{io_hib_system_sleep, IOHibernateSystemSleep, orgIOHibernateSystemSleep},
+				{io_hib_system_wake, IOHibernateSystemWake, orgIOHibernateSystemWake},
 				{"__ZN14IOPMrootDomain26setMaintenanceWakeCalendarEPK18IOPMCalendarStruct", IOPMrootDomain_setMaintenanceWakeCalendar, orgIOPMrootDomain_setMaintenanceWakeCalendar}
 			};
 			size_t size = arrsize(requests) - (doNotOverrideWakeUpTime ? 1 : 0);
 			if (!patcher.routeMultipleLong(KernelPatcher::KernelID, requests, size)) {
-				SYSLOG("HBFX", "patcher.routeMultiple for %s is failed with error %d", requests[0].symbol, patcher.getError());
+				SYSLOG("HBFX", "patcher.routeMultiple for at least one of specified symbols is failed with error %d", patcher.getError());
 				patcher.clearError();
 			}
 			else if (!nextSleepTimer) {
@@ -789,6 +797,12 @@ void HBFX::processKext(KernelPatcher &patcher, size_t index, mach_vm_address_t a
 {
 	if (progressState != ProcessingState::EverythingDone)
 	{
+		if (IOService::getPMRootDomain() == nullptr)
+		{
+			SYSLOG("HBFX", "processKext failed: root domain is not available");
+			return;
+		}
+		
 		if (!ADDPR(hbfx_config).dumpNvram && emulatedNVRAM)
 			ADDPR(hbfx_config).dumpNvram = true;
 		bool autoHibernateModeEnabled = (ADDPR(hbfx_config).autoHibernateMode & Configuration::EnableAutoHibernation);
@@ -1066,7 +1080,7 @@ void HBFX::readConfigFromNVRAM()
 					DBGLOG("HBFX", "EmuVariableUefiPresent is %s", emulatedNVRAM ? "detected" : "not detected");
 				}
 				else if (status != EFI_ERROR64(EFI_NOT_FOUND)) {
-					DBGLOG("HBFX", "Failed to read efi rt services for EmuVariableUefiPresent, error code: 0x%x", status);
+					DBGLOG("HBFX", "Failed to read efi rt services for EmuVariableUefiPresent, error code: 0x%llx", status);
 				}
 
 				if (ADDPR(hbfx_config).autoHibernateMode == 0) {
@@ -1074,14 +1088,14 @@ void HBFX::readConfigFromNVRAM()
 					status = rt->getVariable(u"hbfx-ahbm", &EfiRuntimeServices::LiluReadOnlyGuid, &attr, &size, buf);
 					if (status == EFI_SUCCESS) {
 						if (size != sizeof(ADDPR(hbfx_config).autoHibernateMode))
-							SYSLOG("HBFX", "Expected size of hbfx-ahbm = %d, real size = %d", sizeof(ADDPR(hbfx_config).autoHibernateMode), size);
+							SYSLOG("HBFX", "Expected size of hbfx-ahbm = %ld, real size = %lld", sizeof(ADDPR(hbfx_config).autoHibernateMode), size);
 						else {
 							ADDPR(hbfx_config).autoHibernateMode = *reinterpret_cast<int*>(buf);
 							DBGLOG("HBFX", "Variable hbfx-ahbm has been read from NVRAM: %d", ADDPR(hbfx_config).autoHibernateMode);
 						}
 					}
 					else if (status != EFI_ERROR64(EFI_NOT_FOUND)) {
-						DBGLOG("HBFX", "Failed to read efi rt services for hbfx-ahbm, error code: 0x%x", status);
+						DBGLOG("HBFX", "Failed to read efi rt services for hbfx-ahbm, error code: 0x%llx", status);
 					}
 				}
 				if (!ADDPR(hbfx_config).dumpNvram) {
@@ -1089,14 +1103,14 @@ void HBFX::readConfigFromNVRAM()
 					status = rt->getVariable(u"hbfx-dump-nvram", &EfiRuntimeServices::LiluReadOnlyGuid, &attr, &size, buf);
 					if (status == EFI_SUCCESS) {
 						if (size != sizeof(bool))
-							SYSLOG("HBFX", "Expected size of hbfx-dump-nvram = %d, real size = %d", sizeof(bool), size);
+							SYSLOG("HBFX", "Expected size of hbfx-dump-nvram = %ld, real size = %lld", sizeof(bool), size);
 						else {
 							ADDPR(hbfx_config).dumpNvram = *reinterpret_cast<bool*>(buf);
 							DBGLOG("HBFX", "Variable hbfx-dump-nvram has been read from NVRAM: %d", ADDPR(hbfx_config).dumpNvram);
 						}
 					}
 					else if (status != EFI_ERROR64(EFI_NOT_FOUND)) {
-						DBGLOG("HBFX", "Failed to read efi rt services for hbfx-dump-nvram, error code: 0x%x", status);
+						DBGLOG("HBFX", "Failed to read efi rt services for hbfx-dump-nvram, error code: 0x%llx", status);
 					}
 				}
 				if (ADDPR(hbfx_config).patchPCIFamily && strlen(ADDPR(hbfx_config).ignored_device_list) == 0) {
@@ -1104,7 +1118,7 @@ void HBFX::readConfigFromNVRAM()
 					status = rt->getVariable(u"hbfx-patch-pci", &EfiRuntimeServices::LiluReadOnlyGuid, &attr, &size, buf);
 					if (status == EFI_SUCCESS) {
 						if (size < 4)
-							SYSLOG("HBFX", "Real size of string hbfx-patch-pci is too small: %d", size);
+							SYSLOG("HBFX", "Real size of string hbfx-patch-pci is too small: %lld", size);
 						else {
 							lilu_os_strlcpy(ADDPR(hbfx_config).ignored_device_list, reinterpret_cast<char*>(buf), size);
 							DBGLOG("HBFX", "Variable hbfx-patch-pci has been read from NVRAM: %s", ADDPR(hbfx_config).ignored_device_list);
@@ -1118,7 +1132,7 @@ void HBFX::readConfigFromNVRAM()
 						}
 					}
 					else if (status != EFI_ERROR64(EFI_NOT_FOUND)) {
-						DBGLOG("HBFX", "Failed to read efi rt services for hbfx-patch-pci, error code: 0x%x", status);
+						DBGLOG("HBFX", "Failed to read efi rt services for hbfx-patch-pci, error code: 0x%llx", status);
 					}
 				}
 				if (ADDPR(hbfx_config).patchPCIFamily) {
@@ -1126,14 +1140,14 @@ void HBFX::readConfigFromNVRAM()
 					status = rt->getVariable(u"hbfx-disable-patch-pci", &EfiRuntimeServices::LiluReadOnlyGuid, &attr, &size, buf);
 					if (status == EFI_SUCCESS) {
 						if (size != sizeof(bool))
-							SYSLOG("HBFX", "Expected size of hbfx-disable-patch-pci = %d, real size = %d", sizeof(bool), size);
+							SYSLOG("HBFX", "Expected size of hbfx-disable-patch-pci = %ld, real size = %lld", sizeof(bool), size);
 						else if (*reinterpret_cast<bool*>(buf)) {
 							ADDPR(hbfx_config).patchPCIFamily = false;
 							DBGLOG("HBFX", "Variable hbfx-disable-patch-pci has been read from NVRAM: %d", *reinterpret_cast<bool*>(buf));
 						}
 					}
 					else if (status != EFI_ERROR64(EFI_NOT_FOUND)) {
-						DBGLOG("HBFX", "Failed to read efi rt services for hbfx-disable-patch-pci, error code: 0x%x", status);
+						DBGLOG("HBFX", "Failed to read efi rt services for hbfx-disable-patch-pci, error code: 0x%llx", status);
 					}
 				}
 				
@@ -1179,10 +1193,10 @@ IOPMPowerSource *HBFX::getPowerSource()
 
 //==============================================================================
 
-bool HBFX::isStandbyEnabled(uint32_t &standby_delay, bool &pmset_default_mode)
+bool HBFX::isStandbyEnabled(IOPMrootDomain* pm_root, uint32_t &standby_delay, bool &pmset_default_mode)
 {
-	bool deepSleepEnabled = OSDynamicCast(OSBoolean, IOService::getPMRootDomain()->getProperty(kIOPMDeepSleepEnabledKey)) == kOSBooleanTrue;
-	bool autoPowerOffEnabled = OSDynamicCast(OSBoolean, IOService::getPMRootDomain()->getProperty(kIOPMAutoPowerOffEnabledKey)) == kOSBooleanTrue;
+	bool deepSleepEnabled = OSDynamicCast(OSBoolean, pm_root->getProperty(kIOPMDeepSleepEnabledKey)) == kOSBooleanTrue;
+	bool autoPowerOffEnabled = OSDynamicCast(OSBoolean, pm_root->getProperty(kIOPMAutoPowerOffEnabledKey)) == kOSBooleanTrue;
 	bool standbyEnabled = deepSleepEnabled || autoPowerOffEnabled;
 
 	if (deepSleepEnabled)
