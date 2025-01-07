@@ -1,7 +1,7 @@
 HibernationFixup
 ==================
 
-[![Build Status](https://github.com/acidanthera/HibernationFixup/workflows/CI/badge.svg?branch=master)](https://github.com/acidanthera/HibernationFixup/actions) [![Scan Status](https://scan.coverity.com/projects/16402/badge.svg?flat=1)](https://scan.coverity.com/projects/16402)
+[![Build Status](https://github.com/acidanthera/HibernationFixup/actions/workflows/main.yml/badge.svg?branch=master)](https://github.com/acidanthera/HibernationFixup/actions) [![Scan Status](https://scan.coverity.com/projects/16402/badge.svg?flat=1)](https://scan.coverity.com/projects/16402)
 
 An open source kernel extension providing a sync between RTC variables and NVRAM.
 By design the mach kernel encrypts hibernate sleepimage and writes the encryption key to variable 
