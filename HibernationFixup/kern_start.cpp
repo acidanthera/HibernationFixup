@@ -28,13 +28,17 @@ const char *Configuration::bootargBeta[] {
 Configuration ADDPR(hbfx_config);
 
 void Configuration::readArguments() {
-	dumpNvram = checkKernelArgument(bootargDumpNvram);
+	if (checkKernelArgument(bootargDumpNvram)) {
+		dumpNvram = true;
+		DBGLOG("HBFX", "boot-arg %s specified, turn on writing NVRAM to file", bootargDumpNvram);
+	}
 
-	if (getKernelVersion() >= KernelVersion::Sierra)
+	if ((getKernelVersion() == KernelVersion::Sierra && getKernelMinorVersion() >= 1) ||
+		getKernelVersion() >= KernelVersion::HighSierra)
 	{
 		if (PE_parse_boot_argn(bootargPatchPCIWithList, ignored_device_list, sizeof(ignored_device_list)))
 		{
-			DBGLOG("HBFX", "ignored device list=%s", ignored_device_list);
+			DBGLOG("HBFX", "boot-arg %s specified, ignored device list: %s", bootargPatchPCIWithList, ignored_device_list);
 			if (strstr(ignored_device_list, "none") != nullptr ||
 				strstr(ignored_device_list, "false") != nullptr ||
 				strstr(ignored_device_list, "off") != nullptr)
@@ -42,8 +46,6 @@ void Configuration::readArguments() {
 				patchPCIFamily = false;
 				DBGLOG("HBFX", "Turn off PCIFamily patching since %s contains none, false or off", bootargPatchPCIWithList);
 			}
-			else
-				DBGLOG("HBFX", "boot-arg %s specified, turn on PCIFamily patching", bootargPatchPCIWithList);
 		}
 		
 		if (checkKernelArgument(bootargDisablePatchPCI))
@@ -52,10 +54,15 @@ void Configuration::readArguments() {
 			DBGLOG("HBFX", "boot-arg %s specified, turn off PCIFamily patching", bootargDisablePatchPCI);
 		}
 	}
-	
+	else
+	{
+		patchPCIFamily = false;
+		DBGLOG("HBFX", "Running on Darwin %d.%d. Turn off PCIFamily patching since it is not required in this macOS version", getKernelVersion(), getKernelMinorVersion());
+	}
+
 	if (PE_parse_boot_argn(bootargAutoHibernateMode, &autoHibernateMode, sizeof(autoHibernateMode)))
 	{
-		DBGLOG("HBFX", "boot-arg %s specified, value is 0x%02x", bootargAutoHibernateMode, autoHibernateMode);
+		DBGLOG("HBFX", "boot-arg %s specified, value: %d", bootargAutoHibernateMode, autoHibernateMode);
 	}
 }
 

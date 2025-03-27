@@ -17,14 +17,17 @@ IOHibernateRTCVariables from the system registry and writes it to NVRAM.
 - Enables 'native' hibernation on PC's with hardware NVRAM on 10.10.5 and later.
   'Native' means hibernation with encryption (standard hibernate modes 3 & 25)
 - Enables dumping NVRAM to file /nvram.plist before hibernation or panic
+- Enable patching IOPCIFamily in order to avoid hang & black screen after resume.
+  This patch is dynamic, it works only for hibernation and not for regular sleep.
+  It is automatically enabled in macOS Sierra 10.12.1 or later and disabled in older macOS versions.
 
 #### Boot-args
-- `-hbfx-dump-nvram` saves NVRAM to a file nvram.plist before hibernation and after kernel panic (with panic info)
-- `-hbfx-disable-patch-pci` disables patching of IOPCIFamily (this patch helps to avoid hang & black screen after resume (restoreMachineState won't be called for all devices)
-- `hbfx-patch-pci=XHC,IMEI,IGPU` allows to specify explicit device list (and restoreMachineState won't  be called only for these devices). Also supports values `none`, `false`, `off`.
+- `-hbfxoff` disables kext loading
 - `-hbfxdbg` turns on debugging output
 - `-hbfxbeta` enables loading on unsupported osx
-- `-hbfxoff` disables kext loading
+- `-hbfx-dump-nvram` saves NVRAM to a file nvram.plist before hibernation and after kernel panic (with panic info)
+- `hbfx-patch-pci=XHC,IMEI,IGPU` allows to specify explicit device list (and restoreMachineState won't be called only for these devices). Also supports values `none`, `false`, `off`.
+- `-hbfx-disable-patch-pci` disables patching of IOPCIFamily (this patch helps to avoid hang & black screen after resume (restoreMachineState won't be called for all devices))
 - `hbfx-ahbm=abhm_value` controls auto-hibernation feature, where abhm_value is an arithmetic sum of respective values below:
 	- `EnableAutoHibernation` = 1:
 		If this flag is set, system will hibernate instead of regular sleep (flags below can be used to limit this behavior)

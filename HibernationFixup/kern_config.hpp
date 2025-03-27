@@ -19,8 +19,8 @@ public:
 	static const char *bootargDebug[];
 	static const char *bootargBeta[];
 	static constexpr const char *bootargDumpNvram         {"-hbfx-dump-nvram"};          // write NVRAM to file
-	static constexpr const char *bootargDisablePatchPCI   {"-hbfx-disable-patch-pci"};   // disable patch pci family
 	static constexpr const char *bootargPatchPCIWithList  {"hbfx-patch-pci"};            // patch pci family ignored device list
+	static constexpr const char *bootargDisablePatchPCI   {"-hbfx-disable-patch-pci"};   // disable patch pci family
 	static constexpr const char *bootargAutoHibernateMode {"hbfx-ahbm"};                 // auto hibernate mode
 
 public:

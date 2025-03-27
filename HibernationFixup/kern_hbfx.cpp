@@ -37,7 +37,7 @@ static const char *kextX86PlatformPlugin[] { "/System/Library/Extensions/IOPlatf
 static KernelPatcher::KextInfo kextList[] {
 	{"com.apple.iokit.IOPCIFamily",        kextIOPCIFamilyPath,   arrsize(kextIOPCIFamilyPath),   {true}, {}, KernelPatcher::KextInfo::Unloaded},
 	{"com.apple.driver.AppleRTC",          kextAppleRTCPath,      arrsize(kextAppleRTCPath),      {true}, {}, KernelPatcher::KextInfo::Unloaded},
-	{"com.apple.driver.X86PlatformPlugin", kextX86PlatformPlugin, arrsize(kextX86PlatformPlugin), {true}, {}, KernelPatcher::KextInfo::Unloaded},
+	{"com.apple.driver.X86PlatformPlugin", kextX86PlatformPlugin, arrsize(kextX86PlatformPlugin), {true}, {}, KernelPatcher::KextInfo::Unloaded}
 };
 
 //==============================================================================
@@ -201,7 +201,7 @@ void HBFX::IOPMrootDomain_evaluatePolicy(IOPMrootDomain* that, int stimulus, uin
 #ifdef DEBUG
 	if (callbackHBFX->lastStimulus != stimulus)
 	{
-		DBGLOG("HBFX", "evaluatePolicy called, stimulus = 0x%x", stimulus);
+		DBGLOG("HBFX", "evaluatePolicy called, stimulus = %d", stimulus);
 		callbackHBFX->lastStimulus = stimulus;
 	}
 #endif
@@ -609,10 +609,11 @@ void HBFX::processKernel(KernelPatcher &patcher)
 {
 	if (!(progressState & ProcessingState::KernelRouted))
 	{
-		DBGLOG("HBFX", "current hbfx-ahbm value: %d", ADDPR(hbfx_config).autoHibernateMode);
 		DBGLOG("HBFX", "current dumpNvram value: %d", ADDPR(hbfx_config).dumpNvram);
 		DBGLOG("HBFX", "current patchPCIFamily value: %d", ADDPR(hbfx_config).patchPCIFamily);
-		DBGLOG("HBFX", "current ignored_device_list value: %s", ADDPR(hbfx_config).ignored_device_list);
+		if (strlen(ADDPR(hbfx_config).ignored_device_list) != 0)
+			DBGLOG("HBFX", "current ignored_device_list value: %s", ADDPR(hbfx_config).ignored_device_list);
+		DBGLOG("HBFX", "current hbfx-ahbm value: %d", ADDPR(hbfx_config).autoHibernateMode);
 		
 		if (IOService::getPMRootDomain() == nullptr)
 		{
@@ -816,7 +817,7 @@ void HBFX::processKext(KernelPatcher &patcher, size_t index, mach_vm_address_t a
 				{
 					KernelPatcher::RouteRequest requests[] {
 						{"__ZN11IOPCIBridge19restoreMachineStateEjP11IOPCIDevice", IOPCIBridge_restoreMachineState, orgIOPCIBridge_restoreMachineState},
-						{"__ZN11IOPCIDevice21extendedConfigWrite16Eyt", IOPCIDevice_extendedConfigWrite16, orgIOPCIDevice_extendedConfigWrite16},
+						{"__ZN11IOPCIDevice21extendedConfigWrite16Eyt", IOPCIDevice_extendedConfigWrite16, orgIOPCIDevice_extendedConfigWrite16}
 					};
 
 					if (!patcher.routeMultiple(index, requests, address, size))
@@ -1024,40 +1025,40 @@ void HBFX::readConfigFromNVRAM()
 		auto reg_variable  = OSDynamicCast(OSData, reg_entry->getProperty("EmuVariableUefiPresent"));
 		emulatedNVRAM      = (reg_variable != nullptr && reg_variable->isEqualTo("Yes", 3));
 		DBGLOG("HBFX", "EmuVariableUefiPresent is %s", (emulatedNVRAM ? "detected" : "not detected"));
-		if (ADDPR(hbfx_config).autoHibernateMode == 0) {
-			if (WIOKit::getOSDataValue(reg_entry->getProperty(NVRAM_PREFIX(LILU_READ_ONLY_GUID, "hbfx-ahbm")), "hbfx-ahbm", ADDPR(hbfx_config).autoHibernateMode))
-				DBGLOG("HBFX", "Variable hbfx-ahbm has been read from NVRAM: %d", ADDPR(hbfx_config).autoHibernateMode);
-		}
 		if (!ADDPR(hbfx_config).dumpNvram) {
 			auto dump_nvram = OSDynamicCast(OSBoolean, reg_entry->getProperty(NVRAM_PREFIX(LILU_READ_ONLY_GUID, "hbfx-dump-nvram")));
 			if (dump_nvram != nullptr && dump_nvram->isTrue()) {
 				ADDPR(hbfx_config).dumpNvram = true;
-				DBGLOG("HBFX", "Variable hbfx-dump-nvram has been read from NVRAM and set to true");
-			}
-		}
-		if (ADDPR(hbfx_config).patchPCIFamily && strlen(ADDPR(hbfx_config).ignored_device_list) == 0) {
-			auto patch_pci = OSDynamicCast(OSString, reg_entry->getProperty(NVRAM_PREFIX(LILU_READ_ONLY_GUID, "hbfx-patch-pci")));
-			if (patch_pci != nullptr && patch_pci->getLength() != 0) {
-				size_t length = patch_pci->getLength();
-				if (length > sizeof(ADDPR(hbfx_config).ignored_device_list))
-					length = sizeof(ADDPR(hbfx_config).ignored_device_list);
-				lilu_os_strlcpy(ADDPR(hbfx_config).ignored_device_list, patch_pci->getCStringNoCopy(), length);
-				DBGLOG("HBFX", "Variable hbfx-patch-pci has been read from NVRAM: %s", ADDPR(hbfx_config).ignored_device_list);
-				if (strstr(ADDPR(hbfx_config).ignored_device_list, "none") != nullptr ||
-					strstr(ADDPR(hbfx_config).ignored_device_list, "false") != nullptr ||
-					strstr(ADDPR(hbfx_config).ignored_device_list, "off") != nullptr)
-				{
-					ADDPR(hbfx_config).patchPCIFamily = false;
-					DBGLOG("HBFX", "Turn off PCIFamily patching since hbfx-patch-pci contains none, false or off");
-				}
+				DBGLOG("HBFX", "Variable hbfx-dump-nvram has been read from NVRAM, value: %d", ADDPR(hbfx_config).dumpNvram);
 			}
 		}
 		if (ADDPR(hbfx_config).patchPCIFamily) {
+			if (strlen(ADDPR(hbfx_config).ignored_device_list) == 0) {
+				auto patch_pci_list = OSDynamicCast(OSString, reg_entry->getProperty(NVRAM_PREFIX(LILU_READ_ONLY_GUID, "hbfx-patch-pci")));
+				if (patch_pci_list != nullptr && patch_pci_list->getLength() != 0) {
+					size_t length = patch_pci_list->getLength();
+					if (length > sizeof(ADDPR(hbfx_config).ignored_device_list))
+						length = sizeof(ADDPR(hbfx_config).ignored_device_list);
+					lilu_os_strlcpy(ADDPR(hbfx_config).ignored_device_list, patch_pci_list->getCStringNoCopy(), length);
+					DBGLOG("HBFX", "Variable hbfx-patch-pci has been read from NVRAM, ignored device list: %s", ADDPR(hbfx_config).ignored_device_list);
+					if (strstr(ADDPR(hbfx_config).ignored_device_list, "none") != nullptr ||
+						strstr(ADDPR(hbfx_config).ignored_device_list, "false") != nullptr ||
+						strstr(ADDPR(hbfx_config).ignored_device_list, "off") != nullptr)
+					{
+						ADDPR(hbfx_config).patchPCIFamily = false;
+						DBGLOG("HBFX", "Turn off PCIFamily patching since hbfx-patch-pci contains none, false or off");
+					}
+				}
+			}
 			auto disable_patch_pci = OSDynamicCast(OSBoolean, reg_entry->getProperty(NVRAM_PREFIX(LILU_READ_ONLY_GUID, "hbfx-disable-patch-pci")));
 			if (disable_patch_pci != nullptr && disable_patch_pci->isTrue()) {
 				ADDPR(hbfx_config).patchPCIFamily = false;
-				DBGLOG("HBFX", "Variable hbfx-disable-patch-pci has been read from NVRAM and pci patch was disabled");
+				DBGLOG("HBFX", "Variable hbfx-disable-patch-pci has been read from NVRAM, turn off PCIFamily patching");
 			}
+		}
+		if (ADDPR(hbfx_config).autoHibernateMode == 0) {
+			if (WIOKit::getOSDataValue(reg_entry->getProperty(NVRAM_PREFIX(LILU_READ_ONLY_GUID, "hbfx-ahbm")), "hbfx-ahbm", ADDPR(hbfx_config).autoHibernateMode))
+				DBGLOG("HBFX", "Variable hbfx-ahbm has been read from NVRAM, value: %d", ADDPR(hbfx_config).autoHibernateMode);
 		}
 
 		reg_entry->release();
@@ -1083,21 +1084,6 @@ void HBFX::readConfigFromNVRAM()
 					DBGLOG("HBFX", "Failed to read efi rt services for EmuVariableUefiPresent, error code: 0x%llx", status);
 				}
 
-				if (ADDPR(hbfx_config).autoHibernateMode == 0) {
-					size = sizeof(ADDPR(hbfx_config).autoHibernateMode);
-					status = rt->getVariable(u"hbfx-ahbm", &EfiRuntimeServices::LiluReadOnlyGuid, &attr, &size, buf);
-					if (status == EFI_SUCCESS) {
-						if (size != sizeof(ADDPR(hbfx_config).autoHibernateMode))
-							SYSLOG("HBFX", "Expected size of hbfx-ahbm = %ld, real size = %lld", sizeof(ADDPR(hbfx_config).autoHibernateMode), size);
-						else {
-							ADDPR(hbfx_config).autoHibernateMode = *reinterpret_cast<int*>(buf);
-							DBGLOG("HBFX", "Variable hbfx-ahbm has been read from NVRAM: %d", ADDPR(hbfx_config).autoHibernateMode);
-						}
-					}
-					else if (status != EFI_ERROR64(EFI_NOT_FOUND)) {
-						DBGLOG("HBFX", "Failed to read efi rt services for hbfx-ahbm, error code: 0x%llx", status);
-					}
-				}
 				if (!ADDPR(hbfx_config).dumpNvram) {
 					size = sizeof(bool);
 					status = rt->getVariable(u"hbfx-dump-nvram", &EfiRuntimeServices::LiluReadOnlyGuid, &attr, &size, buf);
@@ -1106,36 +1092,36 @@ void HBFX::readConfigFromNVRAM()
 							SYSLOG("HBFX", "Expected size of hbfx-dump-nvram = %ld, real size = %lld", sizeof(bool), size);
 						else {
 							ADDPR(hbfx_config).dumpNvram = *reinterpret_cast<bool*>(buf);
-							DBGLOG("HBFX", "Variable hbfx-dump-nvram has been read from NVRAM: %d", ADDPR(hbfx_config).dumpNvram);
+							DBGLOG("HBFX", "Variable hbfx-dump-nvram has been read from NVRAM, value: %d", ADDPR(hbfx_config).dumpNvram);
 						}
 					}
 					else if (status != EFI_ERROR64(EFI_NOT_FOUND)) {
 						DBGLOG("HBFX", "Failed to read efi rt services for hbfx-dump-nvram, error code: 0x%llx", status);
 					}
 				}
-				if (ADDPR(hbfx_config).patchPCIFamily && strlen(ADDPR(hbfx_config).ignored_device_list) == 0) {
-					size = buf_size;
-					status = rt->getVariable(u"hbfx-patch-pci", &EfiRuntimeServices::LiluReadOnlyGuid, &attr, &size, buf);
-					if (status == EFI_SUCCESS) {
-						if (size < 4)
-							SYSLOG("HBFX", "Real size of string hbfx-patch-pci is too small: %lld", size);
-						else {
-							lilu_os_strlcpy(ADDPR(hbfx_config).ignored_device_list, reinterpret_cast<char*>(buf), size);
-							DBGLOG("HBFX", "Variable hbfx-patch-pci has been read from NVRAM: %s", ADDPR(hbfx_config).ignored_device_list);
-							if (strstr(ADDPR(hbfx_config).ignored_device_list, "none") != nullptr ||
-								strstr(ADDPR(hbfx_config).ignored_device_list, "false") != nullptr ||
-								strstr(ADDPR(hbfx_config).ignored_device_list, "off") != nullptr)
-							{
-								ADDPR(hbfx_config).patchPCIFamily = false;
-								DBGLOG("HBFX", "Turn off PCIFamily patching since hbfx-patch-pci contains none, false or off");
+				if (ADDPR(hbfx_config).patchPCIFamily) {
+					if (strlen(ADDPR(hbfx_config).ignored_device_list) == 0) {
+						size = buf_size;
+						status = rt->getVariable(u"hbfx-patch-pci", &EfiRuntimeServices::LiluReadOnlyGuid, &attr, &size, buf);
+						if (status == EFI_SUCCESS) {
+							if (size < 4)
+								SYSLOG("HBFX", "Real size of string hbfx-patch-pci is too small: %lld", size);
+							else {
+								lilu_os_strlcpy(ADDPR(hbfx_config).ignored_device_list, reinterpret_cast<char*>(buf), size);
+								DBGLOG("HBFX", "Variable hbfx-patch-pci has been read from NVRAM, ignored device list: %s", ADDPR(hbfx_config).ignored_device_list);
+								if (strstr(ADDPR(hbfx_config).ignored_device_list, "none") != nullptr ||
+									strstr(ADDPR(hbfx_config).ignored_device_list, "false") != nullptr ||
+									strstr(ADDPR(hbfx_config).ignored_device_list, "off") != nullptr)
+								{
+									ADDPR(hbfx_config).patchPCIFamily = false;
+									DBGLOG("HBFX", "Turn off PCIFamily patching since hbfx-patch-pci contains none, false or off");
+								}
 							}
 						}
+						else if (status != EFI_ERROR64(EFI_NOT_FOUND)) {
+							DBGLOG("HBFX", "Failed to read efi rt services for hbfx-patch-pci, error code: 0x%llx", status);
+						}
 					}
-					else if (status != EFI_ERROR64(EFI_NOT_FOUND)) {
-						DBGLOG("HBFX", "Failed to read efi rt services for hbfx-patch-pci, error code: 0x%llx", status);
-					}
-				}
-				if (ADDPR(hbfx_config).patchPCIFamily) {
 					size = sizeof(bool);
 					status = rt->getVariable(u"hbfx-disable-patch-pci", &EfiRuntimeServices::LiluReadOnlyGuid, &attr, &size, buf);
 					if (status == EFI_SUCCESS) {
@@ -1143,14 +1129,29 @@ void HBFX::readConfigFromNVRAM()
 							SYSLOG("HBFX", "Expected size of hbfx-disable-patch-pci = %ld, real size = %lld", sizeof(bool), size);
 						else if (*reinterpret_cast<bool*>(buf)) {
 							ADDPR(hbfx_config).patchPCIFamily = false;
-							DBGLOG("HBFX", "Variable hbfx-disable-patch-pci has been read from NVRAM: %d", *reinterpret_cast<bool*>(buf));
+							DBGLOG("HBFX", "Variable hbfx-disable-patch-pci has been read from NVRAM, turn off PCIFamily patching");
 						}
 					}
 					else if (status != EFI_ERROR64(EFI_NOT_FOUND)) {
 						DBGLOG("HBFX", "Failed to read efi rt services for hbfx-disable-patch-pci, error code: 0x%llx", status);
 					}
 				}
-				
+				if (ADDPR(hbfx_config).autoHibernateMode == 0) {
+					size = sizeof(ADDPR(hbfx_config).autoHibernateMode);
+					status = rt->getVariable(u"hbfx-ahbm", &EfiRuntimeServices::LiluReadOnlyGuid, &attr, &size, buf);
+					if (status == EFI_SUCCESS) {
+						if (size != sizeof(ADDPR(hbfx_config).autoHibernateMode))
+							SYSLOG("HBFX", "Expected size of hbfx-ahbm = %ld, real size = %lld", sizeof(ADDPR(hbfx_config).autoHibernateMode), size);
+						else {
+							ADDPR(hbfx_config).autoHibernateMode = *reinterpret_cast<int*>(buf);
+							DBGLOG("HBFX", "Variable hbfx-ahbm has been read from NVRAM, value: %d", ADDPR(hbfx_config).autoHibernateMode);
+						}
+					}
+					else if (status != EFI_ERROR64(EFI_NOT_FOUND)) {
+						DBGLOG("HBFX", "Failed to read efi rt services for hbfx-ahbm, error code: 0x%llx", status);
+					}
+				}
+
 				Buffer::deleter(buf);
 			}
 			else
