@@ -1,5 +1,9 @@
 HibernationFixup Changelog
 ============================
+#### v1.5.3
+- patchPCIfamily: make sure it is enabled by default only on macOS Sierra 10.12.1 or later. Automatically disable it if runnning an older macOS version. The user can always disable this patch (if not needed) by using `-hbfx-disable-patch-pci` boot-arg or `hbfx-disable-patch-pci` NVRAM entry.
+- Improve readability of code & debug
+
 #### v1.5.2
 - Adapt code to make it work correclty in macOS Sequoia.
 
