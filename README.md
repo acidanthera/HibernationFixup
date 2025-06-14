@@ -24,7 +24,7 @@ IOHibernateRTCVariables from the system registry and writes it to NVRAM.
 #### Boot-args
 - `-hbfxoff` disables kext loading
 - `-hbfxdbg` turns on debugging output
-- `-hbfxbeta` enables loading on unsupported osx
+- `-hbfxbeta` enables loading on unsupported macOS
 - `-hbfx-dump-nvram` saves NVRAM to a file nvram.plist before hibernation and after kernel panic (with panic info)
 - `hbfx-patch-pci=XHC,IMEI,IGPU` allows to specify explicit device list (and restoreMachineState won't be called only for these devices). Also supports values `none`, `false`, `off`.
 - `-hbfx-disable-patch-pci` disables patching of IOPCIFamily (this patch helps to avoid hang & black screen after resume (restoreMachineState won't be called for all devices))
